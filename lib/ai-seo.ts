@@ -53,6 +53,12 @@ Réponds UNIQUEMENT avec ce JSON valide (sans markdown):
 }`
 
   try {
+    // Fix: télécharger l'image et l'envoyer en base64 car l'API Anthropic n'accepte pas type 'url'
+    const imageResponse = await fetch(imageUrl)
+    const imageBuffer = await imageResponse.arrayBuffer()
+    const base64Image = Buffer.from(imageBuffer).toString('base64')
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg'
+
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-5',
       max_tokens: 1000,
@@ -62,7 +68,11 @@ Réponds UNIQUEMENT avec ce JSON valide (sans markdown):
           content: [
             {
               type: 'image',
-              source: { type: 'url', url: imageUrl },
+              source: {
+                type: 'base64',
+                media_type: contentType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: base64Image,
+              },
             },
             { type: 'text', text: prompt },
           ],
@@ -90,13 +100,12 @@ Réponds UNIQUEMENT avec ce JSON valide (sans markdown):
     }
   } catch (error) {
     console.error('Erreur génération SEO:', error)
-    // Fallback basique
     const fallbackTitre = userInput.titre || `Photo Burkina Faso - ${userInput.categorie}`
     return {
       titre: fallbackTitre,
       description: userInput.description || `Image du Burkina Faso dans la catégorie ${userInput.categorie}`,
       alt_text: fallbackTitre,
-      tags: ['Burkina Faso', 'Afrique de l\'ouest', userInput.categorie, userInput.ville || ''].filter(Boolean),
+      tags: ['Burkina Faso', "Afrique de l'ouest", userInput.categorie, userInput.ville || ''].filter(Boolean),
       slug: `${slugify(fallbackTitre, { lower: true, strict: true })}-${Date.now()}`,
     }
   }
