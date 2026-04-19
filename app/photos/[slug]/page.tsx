@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound } from 'next/navigation' 
 import type { Metadata } from 'next'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import PhotoDetailClient from './PhotoDetailClient'
