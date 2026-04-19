@@ -50,8 +50,10 @@ export default async function PhotoDetailPage({ params }: Props) {
 
   if (!media) notFound()
 
-  // Incrémenter views
-  await supabase.rpc('increment_views', { media_id: media.id }).catch(() => {})
+  // Incrémenter views — fix: pas de .catch() sur rpc, on ignore l'erreur autrement
+  try {
+    await supabase.rpc('increment_views', { media_id: media.id })
+  } catch {}
 
   // Médias similaires
   const { data: related } = await supabase
