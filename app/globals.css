@@ -1,0 +1,254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --faso-red: #EF2B2D;
+  --faso-green: #009A00;
+  --faso-gold: #EFC031;
+  --faso-night: #0A0A0A;
+  --faso-dusk: #1A1A2E;
+  --faso-card: #111827;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--faso-night);
+  color: white;
+  font-family: var(--font-body), sans-serif;
+}
+
+/* Scrollbar custom */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--faso-night);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--faso-gold);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faso-red);
+}
+
+/* Selection */
+::selection {
+  background: rgba(239, 192, 49, 0.3);
+  color: white;
+}
+
+/* =====================
+   TYPOGRAPHY
+===================== */
+.font-display {
+  font-family: var(--font-display), serif;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display), serif;
+}
+
+/* =====================
+   COMPOSANTS RÉUTILISABLES
+===================== */
+
+/* Bouton principal */
+.btn-primary {
+  @apply inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition-all duration-300;
+  background: linear-gradient(135deg, var(--faso-red), #C41E20);
+  box-shadow: 0 4px 20px rgba(239, 43, 45, 0.3);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(239, 43, 45, 0.5);
+}
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Bouton gold */
+.btn-gold {
+  @apply inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-black transition-all duration-300;
+  background: linear-gradient(135deg, var(--faso-gold), #C9A025);
+  box-shadow: 0 4px 20px rgba(239, 192, 49, 0.3);
+}
+.btn-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(239, 192, 49, 0.5);
+}
+
+/* Bouton ghost */
+.btn-ghost {
+  @apply inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+.btn-ghost:hover {
+  border-color: var(--faso-gold);
+  color: var(--faso-gold);
+  background: rgba(239, 192, 49, 0.05);
+}
+
+/* Card */
+.card {
+  @apply rounded-2xl overflow-hidden transition-all duration-300;
+  background: var(--faso-card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.card:hover {
+  border-color: rgba(239, 192, 49, 0.2);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* Badge */
+.badge {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+}
+.badge-red {
+  background: rgba(239, 43, 45, 0.15);
+  color: var(--faso-red);
+  border: 1px solid rgba(239, 43, 45, 0.3);
+}
+.badge-green {
+  background: rgba(0, 154, 0, 0.15);
+  color: #4ADE80;
+  border: 1px solid rgba(0, 154, 0, 0.3);
+}
+.badge-gold {
+  background: rgba(239, 192, 49, 0.15);
+  color: var(--faso-gold);
+  border: 1px solid rgba(239, 192, 49, 0.3);
+}
+.badge-gray {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.6);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Input */
+.input-field {
+  @apply w-full px-4 py-3 rounded-xl text-white placeholder-white/30 outline-none transition-all duration-200;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.input-field:focus {
+  border-color: var(--faso-gold);
+  background: rgba(239, 192, 49, 0.05);
+  box-shadow: 0 0 0 3px rgba(239, 192, 49, 0.1);
+}
+
+/* Gradient text */
+.text-gradient-faso {
+  background: linear-gradient(135deg, var(--faso-red), var(--faso-gold), var(--faso-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, var(--faso-gold), #FFF3A3, var(--faso-gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Divider drapeau */
+.faso-divider {
+  height: 3px;
+  background: linear-gradient(90deg, var(--faso-red) 33%, var(--faso-gold) 33%, var(--faso-gold) 66%, var(--faso-green) 66%);
+  border-radius: 2px;
+}
+
+/* Masonry grid */
+.masonry-grid {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+}
+.masonry-grid-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Overlay gradient sur images */
+.img-overlay {
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 50%, transparent 100%);
+}
+
+/* Étoile burkinabè animée */
+.faso-star {
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+/* =====================
+   ANIMATIONS UTILITAIRES
+===================== */
+.animate-delay-100 { animation-delay: 0.1s; }
+.animate-delay-200 { animation-delay: 0.2s; }
+.animate-delay-300 { animation-delay: 0.3s; }
+.animate-delay-400 { animation-delay: 0.4s; }
+.animate-delay-500 { animation-delay: 0.5s; }
+
+.opacity-0-init {
+  opacity: 0;
+}
+
+/* Page transitions */
+.page-enter {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* =====================
+   UPLOAD DROPZONE
+===================== */
+.dropzone-active {
+  border-color: var(--faso-gold) !important;
+  background: rgba(239, 192, 49, 0.05) !important;
+}
+
+/* =====================
+   ADMIN SIDEBAR
+===================== */
+.admin-sidebar-link {
+  @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-white/60 hover:text-white;
+}
+.admin-sidebar-link:hover {
+  background: rgba(255,255,255,0.05);
+}
+.admin-sidebar-link.active {
+  background: rgba(239, 192, 49, 0.1);
+  color: var(--faso-gold);
+  border: 1px solid rgba(239, 192, 49, 0.2);
+}
+
+/* =====================
+   RESPONSIVE
+===================== */
+@media (max-width: 768px) {
+  .masonry-grid {
+    gap: 10px;
+  }
+  .masonry-grid-column {
+    gap: 10px;
+  }
+}
