@@ -10,8 +10,6 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createAdminClient()
 
-    // Auth check
-    const authHeader = req.headers.get('cookie') || ''
     const { data: { user } } = await supabase.auth.getUser()
 
     const formData = await req.formData()
@@ -29,20 +27,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Fichier et catégorie requis' }, { status: 400 })
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    let cloudinaryResult = null
-    let streamResult = null
-    let thumbnailUrl = ''
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
 
     if (type === 'photo') {
-      // Upload image vers Cloudinary
-      cloudinaryResult = await uploadToCloudinary(buffer, 'fasostock/photos')
+      const cloudinaryResult = await uploadToCloudinary(buffer, 'fasostock/photos')
 
-      // Analyse Google Vision
       const visionData = await analyzeWithGoogleVision(cloudinaryResult.url)
 
-      // Génération SEO par IA
       const userInput = {
         titre, description, ville, region, categorie,
         licence: licence as any,
@@ -50,7 +42,6 @@ export async function POST(req: NextRequest) {
       }
       const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput, visionData)
 
-      // Sauvegarde en DB
       const { data: media, error } = await supabase.from('medias').insert({
         type: 'photo',
         cloudinary_url: cloudinaryResult.url,
@@ -72,14 +63,11 @@ export async function POST(req: NextRequest) {
 
       if (error) throw error
 
-      // Ping Google sitemap
       await pingGoogle()
-
       return NextResponse.json({ success: true, media })
 
     } else {
-      // Vidéo — Upload vers Cloudflare Stream
-      const streamData = await uploadToCloudflareStream(buffer, file.name)
+      const streamData = await uploadToCloudflareStream(arrayBuffer, file.name)
 
       const seoData = await generateSEOFromText({
         titre, description, ville, region, categorie,
@@ -107,7 +95,6 @@ export async function POST(req: NextRequest) {
       if (error) throw error
 
       await pingGoogle()
-
       return NextResponse.json({ success: true, media })
     }
 
@@ -117,9 +104,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function uploadToCloudflareStream(buffer: Buffer, filename: string) {
+async function uploadToCloudflareStream(arrayBuffer: ArrayBuffer, filename: string) {
+  const blob = new Blob([arrayBuffer])
   const formData = new FormData()
-  formData.append('file', new Blob([buffer]), filename)
+  formData.append('file', blob, filename)
 
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/stream`,
