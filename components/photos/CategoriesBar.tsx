@@ -1,7 +1,14 @@
 'use client'
+/**
+ * components/photos/CategoriesBar.tsx
+ * Barre de filtrage type (Photos/Vidéos/Tout) + catégories
+ * Bilingue FR/EN + mode clair/sombre
+ */
 import { useRouter } from 'next/navigation'
 import { Image, Video, Grid3X3 } from 'lucide-react'
 import type { Categorie } from '@/types'
+import { useTranslations } from 'next-intl'
+import { useTheme } from '@/context/ThemeContext'
 
 interface CategoriesBarProps {
   categories: Categorie[]
@@ -17,6 +24,9 @@ export default function CategoriesBar({
   searchQuery,
 }: CategoriesBarProps) {
   const router = useRouter()
+  const t = useTranslations('categories_bar')
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
 
   const buildUrl = (params: Record<string, string | undefined>) => {
     const urlParams = new URLSearchParams()
@@ -26,27 +36,34 @@ export default function CategoriesBar({
   }
 
   const typeFilters = [
-    { label: 'Tout', value: undefined, icon: Grid3X3 },
-    { label: 'Photos', value: 'photo', icon: Image },
-    { label: 'Vidéos', value: 'video', icon: Video },
+    { labelKey: 'all',    value: undefined,  icon: Grid3X3 },
+    { labelKey: 'photos', value: 'photo',    icon: Image },
+    { labelKey: 'videos', value: 'video',    icon: Video },
   ]
+
+  /* Classes communes selon le thème */
+  const inactiveBtn = isLight
+    ? 'bg-[rgba(28,42,58,0.06)] text-[rgba(28,42,58,0.65)] hover:text-[#1C2A3A] hover:bg-[rgba(28,42,58,0.12)]'
+    : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
 
   return (
     <div className="py-8 space-y-4">
-      {/* Type filters */}
+      {/* Filtres par type */}
       <div className="flex items-center gap-3 flex-wrap">
-        {typeFilters.map(({ label, value, icon: Icon }) => (
+        {typeFilters.map(({ labelKey, value, icon: Icon }) => (
           <button
-            key={label}
-            onClick={() => router.push(buildUrl({ q: searchQuery, categorie: activeCategory, type: value }))}
+            key={labelKey}
+            onClick={() =>
+              router.push(buildUrl({ q: searchQuery, categorie: activeCategory, type: value }))
+            }
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               activeType === value
                 ? 'bg-faso-gold text-black'
-                : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+                : inactiveBtn
             }`}
           >
             <Icon size={15} />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>
@@ -58,10 +75,10 @@ export default function CategoriesBar({
           className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
             !activeCategory
               ? 'bg-faso-red text-white'
-              : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'
+              : inactiveBtn
           }`}
         >
-          Toutes
+          {t('all_categories')}
         </button>
         {categories.map((cat) => (
           <button
@@ -72,7 +89,7 @@ export default function CategoriesBar({
             className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
               activeCategory === cat.slug
                 ? 'bg-faso-red text-white'
-                : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10'
+                : inactiveBtn
             }`}
           >
             {cat.nom}

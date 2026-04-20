@@ -1,9 +1,15 @@
 'use client'
-import { useEffect, useRef } from 'react'
+/**
+ * components/photos/PhotoGrid.tsx
+ * Grille masonry de médias — bilingue + mode clair/sombre
+ */
+import { useRef } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react'
 import PhotoCard from './PhotoCard'
 import type { Media } from '@/types'
+import { useTranslations } from 'next-intl'
+import { useTheme } from '@/context/ThemeContext'
 
 interface PhotoGridProps {
   medias: Media[]
@@ -15,6 +21,9 @@ interface PhotoGridProps {
 
 export default function PhotoGrid({ medias, total, page, limit, searchParams }: PhotoGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
+  const t = useTranslations('photogrid')
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const totalPages = Math.ceil(total / limit)
 
   const buildUrl = (newPage: number) => {
@@ -32,18 +41,29 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
     columnArrays[i % columns].push(media)
   })
 
+  /* Classes communes */
+  const paginationInactive = isLight
+    ? 'bg-[rgba(28,42,58,0.06)] text-[rgba(28,42,58,0.6)] hover:bg-[rgba(28,42,58,0.1)] hover:text-[#1C2A3A]'
+    : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+
+  const paginationActive = 'bg-faso-gold text-black font-bold'
+
   if (medias.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center">
-        <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mb-6">
-          <ImageOff size={32} className="text-white/20" />
+        <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mb-6 ${
+          isLight ? 'bg-[rgba(28,42,58,0.06)]' : 'bg-white/5'
+        }`}>
+          <ImageOff size={32} className={isLight ? 'text-[rgba(28,42,58,0.25)]' : 'text-white/20'} />
         </div>
-        <h3 className="font-display text-xl text-white mb-2">Aucun média trouvé</h3>
-        <p className="text-white/40 text-sm mb-8">
-          Soyez le premier à contribuer dans cette catégorie
+        <h3 className={`font-display text-xl mb-2 ${isLight ? 'text-[#1C2A3A]' : 'text-white'}`}>
+          {t('no_media_title')}
+        </h3>
+        <p className={`text-sm mb-8 ${isLight ? 'text-[rgba(28,42,58,0.5)]' : 'text-white/40'}`}>
+          {t('no_media_desc')}
         </p>
         <Link href="/upload" className="btn-gold">
-          Contribuer maintenant
+          {t('contribute_now')}
         </Link>
       </div>
     )
@@ -53,13 +73,6 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
     <div ref={gridRef}>
       {/* Masonry Grid */}
       <div className="flex gap-4">
-        {/* Mobile: 2 cols, Tablet: 3 cols, Desktop: 4 cols */}
-        {[
-          columnArrays.slice(0, 2),
-          columnArrays.slice(0, 3),
-          columnArrays,
-        ].map((_, breakpointIdx) => null)}
-
         {/* 2 columns on mobile */}
         <div className="flex gap-4 w-full md:hidden">
           {columnArrays.slice(0, 2).map((col, colIdx) => (
@@ -119,8 +132,8 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
             href={buildUrl(page - 1)}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
               page <= 1
-                ? 'opacity-30 pointer-events-none bg-white/5'
-                : 'bg-white/5 hover:bg-faso-gold/10 hover:text-faso-gold'
+                ? `opacity-30 pointer-events-none ${isLight ? 'bg-[rgba(28,42,58,0.06)]' : 'bg-white/5'}`
+                : `${paginationInactive} hover:text-faso-gold hover:bg-faso-gold/10`
             }`}
           >
             <ChevronLeft size={18} />
@@ -138,9 +151,7 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
                 key={pageNum}
                 href={buildUrl(pageNum)}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-medium transition-all ${
-                  pageNum === page
-                    ? 'bg-faso-gold text-black font-bold'
-                    : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                  pageNum === page ? paginationActive : paginationInactive
                 }`}
               >
                 {pageNum}
@@ -152,8 +163,8 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
             href={buildUrl(page + 1)}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
               page >= totalPages
-                ? 'opacity-30 pointer-events-none bg-white/5'
-                : 'bg-white/5 hover:bg-faso-gold/10 hover:text-faso-gold'
+                ? `opacity-30 pointer-events-none ${isLight ? 'bg-[rgba(28,42,58,0.06)]' : 'bg-white/5'}`
+                : `${paginationInactive} hover:text-faso-gold hover:bg-faso-gold/10`
             }`}
           >
             <ChevronRight size={18} />
@@ -162,8 +173,8 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
       )}
 
       {/* Total count */}
-      <p className="text-center text-white/20 text-xs pb-4">
-        {total} média{total > 1 ? 's' : ''} • Page {page}/{totalPages}
+      <p className={`text-center text-xs pb-4 ${isLight ? 'text-[rgba(28,42,58,0.3)]' : 'text-white/20'}`}>
+        {total} {total > 1 ? t('medias_count') : t('media_count')} • {t('page')} {page}/{totalPages}
       </p>
     </div>
   )

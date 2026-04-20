@@ -1,6 +1,12 @@
 'use client'
+/**
+ * components/photos/StatsBar.tsx
+ * Barre de statistiques animée — bilingue + mode clair/sombre
+ */
 import { useEffect, useRef, useState } from 'react'
 import { Image, Video, Users } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { useTheme } from '@/context/ThemeContext'
 
 interface StatsBarProps {
   photos: number
@@ -38,23 +44,35 @@ function AnimatedNumber({ target }: { target: number }) {
 }
 
 export default function StatsBar({ photos, videos, contributors }: StatsBarProps) {
+  const t = useTranslations('stats')
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
+
   const stats = [
-    { icon: Image, label: 'Photos libres', value: photos, color: 'text-faso-red' },
-    { icon: Video, label: 'Vidéos', value: videos, color: 'text-faso-green' },
-    { icon: Users, label: 'Contributeurs', value: contributors, color: 'text-faso-gold' },
+    { icon: Image,  label: t('photos'),       value: photos,       color: 'text-faso-red' },
+    { icon: Video,  label: t('videos'),        value: videos,       color: 'text-faso-green' },
+    { icon: Users,  label: t('contributors'),  value: contributors, color: 'text-faso-gold' },
   ]
 
   return (
     <div className="relative -mt-12 z-10 max-w-4xl mx-auto px-4 mb-16">
-      <div className="card border border-white/10 backdrop-blur-xl bg-faso-dusk/80">
-        <div className="grid grid-cols-3 divide-x divide-white/5">
+      <div
+        className={`rounded-2xl border overflow-hidden backdrop-blur-xl ${
+          isLight
+            ? 'bg-white/95 border-[rgba(28,42,58,0.10)] shadow-[0_4px_24px_rgba(28,42,58,0.10)]'
+            : 'bg-faso-dusk/80 border-white/10'
+        }`}
+      >
+        <div className={`grid grid-cols-3 ${isLight ? 'divide-x divide-[rgba(28,42,58,0.08)]' : 'divide-x divide-white/5'}`}>
           {stats.map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="flex flex-col items-center py-6 px-4">
               <Icon size={20} className={`${color} mb-2`} />
               <span className={`font-display text-3xl md:text-4xl font-bold ${color}`}>
                 <AnimatedNumber target={value} />
               </span>
-              <span className="text-xs text-white/40 mt-1 text-center">{label}</span>
+              <span className={`text-xs mt-1 text-center ${isLight ? 'text-[rgba(28,42,58,0.5)]' : 'text-white/40'}`}>
+                {label}
+              </span>
             </div>
           ))}
         </div>
