@@ -2,11 +2,13 @@
 /**
  * app/upload/page.tsx — Page de contribution de médias
  * Sans authentification requise
- * Formulaire complet : contributeur + média
+ * Formulaire complet : contributeur + média — entièrement bilingue via next-intl
  */
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useTheme } from '@/context/ThemeContext'
 import {
   Upload, Image, Video, X, CheckCircle, AlertCircle,
   Loader2, Info, ChevronDown, User, Mail, Phone
@@ -26,12 +28,7 @@ const REGIONS = [
   'Plateau-Central', 'Sahel', 'Sud-Ouest',
 ]
 
-const LICENCES: { value: LicenceType; label: string; desc: string }[] = [
-  { value: 'CC BY', label: 'CC BY', desc: 'Libre avec attribution (recommandé)' },
-  { value: 'CC0', label: 'CC0', desc: 'Domaine public total' },
-  { value: 'CC BY-NC', label: 'CC BY-NC', desc: 'Libre, pas d\'usage commercial' },
-  { value: 'CC BY-SA', label: 'CC BY-SA', desc: 'Libre, partage identique' },
-]
+const LICENCE_VALUES: LicenceType[] = ['CC BY', 'CC0', 'CC BY-NC', 'CC BY-SA']
 
 interface FileWithPreview {
   file: File
@@ -43,6 +40,10 @@ type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error'
 
 export default function UploadPage() {
   const router = useRouter()
+  const t = useTranslations('upload')
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
+
   const [files, setFiles] = useState<FileWithPreview[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [status, setStatus] = useState<UploadStatus>('idle')
@@ -62,6 +63,13 @@ export default function UploadPage() {
   const [categorie, setCategorie] = useState('')
   const [licence, setLicence] = useState<LicenceType>('CC BY')
   const [tags, setTags] = useState('')
+
+  // Libellés des licences depuis les traductions
+  const LICENCES = LICENCE_VALUES.map((v) => ({
+    value: v,
+    label: v,
+    desc: t(`licence_desc_${v.replace(' ', '_').replace('-', '_')}` as Parameters<typeof t>[0]),
+  }))
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
@@ -88,21 +96,20 @@ export default function UploadPage() {
   }
 
   const handleSubmit = async () => {
-    // Validations
     if (!files.length) {
-      toast.error('Veuillez sélectionner au moins un fichier')
+      toast.error(t('error_no_file'))
       return
     }
     if (!categorie) {
-      toast.error('Veuillez choisir une catégorie')
+      toast.error(t('error_no_category'))
       return
     }
     if (!contributeurPrenom.trim() || !contributeurNom.trim()) {
-      toast.error('Prénom et nom sont requis')
+      toast.error(t('error_name_required'))
       return
     }
     if (!contributeurEmail.trim()) {
-      toast.error('Email requis')
+      toast.error(t('error_email_required'))
       return
     }
 
@@ -117,12 +124,10 @@ export default function UploadPage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('type', type)
-      // Contributeur
       formData.append('contributeur_prenom', contributeurPrenom.trim())
       formData.append('contributeur_nom', contributeurNom.trim())
       formData.append('contributeur_email', contributeurEmail.trim())
       formData.append('contributeur_tel', contributeurTel.trim())
-      // Média
       formData.append('titre', titre)
       formData.append('description', description)
       formData.append('ville', ville)
@@ -142,12 +147,12 @@ export default function UploadPage() {
 
         if (!res.ok) {
           const data = await res.json()
-          toast.error(`Erreur pour ${file.name}: ${data.error || 'Erreur inconnue'}`)
+          toast.error(`${file.name}: ${data.error || t('error_unknown')}`)
           continue
         }
         successCount++
       } catch {
-        toast.error(`Erreur réseau pour ${file.name}`)
+        toast.error(`${t('error_network')} ${file.name}`)
       }
     }
 
@@ -156,7 +161,7 @@ export default function UploadPage() {
     if (successCount > 0) {
       setStatus('success')
       toast.success(
-        `${successCount} média${successCount > 1 ? 's' : ''} envoyé${successCount > 1 ? 's' : ''} ! Merci pour votre contribution 🇧🇫`
+        `${successCount} ${successCount > 1 ? t('files_selected_plural') : t('files_selected')} — ${t('success_msg')}`
       )
       setTimeout(() => router.push('/'), 3000)
     } else {
@@ -166,6 +171,24 @@ export default function UploadPage() {
 
   const currentFile = files[currentIdx]
 
+  /* Couleurs adaptées au thème */
+  const labelColor = isLight ? 'text-[rgba(26,45,74,0.6)]' : 'text-white/60'
+  const labelMuted = isLight ? 'text-[rgba(26,45,74,0.3)]' : 'text-white/30'
+  const dropzoneBorder = isLight ? 'border-[rgba(26,45,74,0.15)] hover:border-[rgba(26,45,74,0.28)]' : 'border-white/10 hover:border-white/20'
+  const dropzoneText = isLight ? 'text-[#1A2D4A]' : 'text-white'
+  const dropzoneSubText = isLight ? 'text-[rgba(26,45,74,0.4)]' : 'text-white/30'
+  const fileCountColor = isLight ? 'text-[rgba(26,45,74,0.35)]' : 'text-white/30'
+  const licenceActive = 'border-faso-gold bg-faso-gold/10'
+  const licenceInactive = isLight
+    ? 'border-[rgba(26,45,74,0.12)] hover:border-[rgba(26,45,74,0.25)]'
+    : 'border-white/10 hover:border-white/20'
+  const licenceTitle = isLight ? 'text-[#1A2D4A]' : 'text-white'
+  const licenceDesc = isLight ? 'text-[rgba(26,45,74,0.45)]' : 'text-white/40'
+  const infoText = isLight ? 'text-[rgba(26,45,74,0.5)]' : 'text-white/50'
+  const teamText = isLight ? 'text-[rgba(26,45,74,0.25)]' : 'text-white/20'
+  const successEmailText = isLight ? 'text-[rgba(26,45,74,0.45)]' : 'text-white/40'
+  const cardTitle = isLight ? 'text-[#1A2D4A]' : 'text-white'
+
   return (
     <div className="min-h-screen pt-24 pb-16">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -174,14 +197,14 @@ export default function UploadPage() {
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 badge badge-gold mb-4">
             <Upload size={14} />
-            Contribuer à BurkinaVista
+            {t('badge')}
           </div>
-          <h1 className="font-display text-3xl md:text-5xl text-white mb-4">
-            Partagez le vrai{' '}
-            <span className="text-gradient-faso">Burkina Faso</span>
+          <h1 className="font-display text-3xl md:text-5xl mb-4" style={{ color: 'var(--text-primary)' }}>
+            {t('title')}{' '}
+            <span className="text-gradient-faso">{t('title_gradient')}</span>
           </h1>
-          <p className="text-white/50 max-w-xl mx-auto text-sm md:text-base">
-            Vos photos et vidéos seront vérifiées par notre équipe avant publication.
+          <p className="max-w-xl mx-auto text-sm md:text-base" style={{ color: 'var(--text-secondary)' }}>
+            {t('subtitle')}
           </p>
         </div>
 
@@ -192,15 +215,15 @@ export default function UploadPage() {
 
             {/* ── Section Contributeur ── */}
             <div className="card p-5 border border-faso-gold/20">
-              <h2 className="font-display text-base text-white mb-4 flex items-center gap-2">
+              <h2 className={`font-display text-base mb-4 flex items-center gap-2 ${cardTitle}`}>
                 <User size={16} className="text-faso-gold" />
-                Vos informations
+                {t('your_info')}
               </h2>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-white/50 mb-1.5">
-                      Prénom <span className="text-faso-red">*</span>
+                    <label className={`block text-xs mb-1.5 ${labelColor}`}>
+                      {t('firstname')} <span className="text-faso-red">*</span>
                     </label>
                     <input
                       type="text"
@@ -212,8 +235,8 @@ export default function UploadPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1.5">
-                      Nom <span className="text-faso-red">*</span>
+                    <label className={`block text-xs mb-1.5 ${labelColor}`}>
+                      {t('lastname')} <span className="text-faso-red">*</span>
                     </label>
                     <input
                       type="text"
@@ -226,11 +249,11 @@ export default function UploadPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-white/50 mb-1.5">
+                  <label className={`block text-xs mb-1.5 ${labelColor}`}>
                     Email <span className="text-faso-red">*</span>
                   </label>
                   <div className="relative">
-                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                    <Mail size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${labelMuted}`} />
                     <input
                       type="email"
                       value={contributeurEmail}
@@ -242,11 +265,11 @@ export default function UploadPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-white/50 mb-1.5">
-                    Téléphone <span className="text-white/20">(optionnel)</span>
+                  <label className={`block text-xs mb-1.5 ${labelColor}`}>
+                    {t('phone')} <span className={labelMuted}>{t('phone_optional')}</span>
                   </label>
                   <div className="relative">
-                    <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                    <Phone size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${labelMuted}`} />
                     <input
                       type="tel"
                       value={contributeurTel}
@@ -265,7 +288,7 @@ export default function UploadPage() {
               className={`relative border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all duration-300 ${
                 isDragActive
                   ? 'border-faso-gold bg-faso-gold/5'
-                  : 'border-white/10 hover:border-white/20 hover:bg-white/2'
+                  : dropzoneBorder
               }`}
             >
               <input {...getInputProps()} />
@@ -274,10 +297,10 @@ export default function UploadPage() {
                   <Upload size={28} className="text-faso-gold" />
                 </div>
                 <div>
-                  <p className="text-white font-medium mb-1">
-                    {isDragActive ? 'Déposez vos fichiers ici' : 'Glissez vos photos ou vidéos'}
+                  <p className={`font-medium mb-1 ${dropzoneText}`}>
+                    {isDragActive ? t('drop_here') : t('drag_drop')}
                   </p>
-                  <p className="text-white/30 text-sm">ou cliquez pour sélectionner</p>
+                  <p className={`text-sm ${dropzoneSubText}`}>{t('click_select')}</p>
                 </div>
                 <div className="flex gap-2 flex-wrap justify-center">
                   <span className="badge badge-gray text-xs">JPG, PNG, WebP</span>
@@ -290,8 +313,8 @@ export default function UploadPage() {
             {/* Fichiers sélectionnés */}
             {files.length > 0 && (
               <div className="space-y-3">
-                <p className="text-xs text-white/30 uppercase tracking-wider">
-                  {files.length} fichier{files.length > 1 ? 's' : ''} sélectionné{files.length > 1 ? 's' : ''}
+                <p className={`text-xs uppercase tracking-wider ${fileCountColor}`}>
+                  {files.length} {files.length > 1 ? t('files_selected_plural') : t('files_selected')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {files.map((f, i) => (
@@ -344,9 +367,8 @@ export default function UploadPage() {
             {/* Note info */}
             <div className="card p-4 flex items-start gap-3">
               <Info size={15} className="text-faso-gold flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-white/50 leading-relaxed">
-                Les champs titre, description et tags sont optionnels.
-                Notre équipe s'assure de la qualité de chaque média avant publication.
+              <p className={`text-xs leading-relaxed ${infoText}`}>
+                {t('info_note')}
               </p>
             </div>
           </div>
@@ -356,8 +378,8 @@ export default function UploadPage() {
 
             {/* Titre */}
             <div>
-              <label className="block text-sm text-white/60 mb-2">
-                Titre <span className="text-white/20">(optionnel)</span>
+              <label className={`block text-sm mb-2 ${labelColor}`}>
+                {t('title_field')} <span className={labelMuted}>{t('optional')}</span>
               </label>
               <input
                 type="text"
@@ -370,8 +392,8 @@ export default function UploadPage() {
 
             {/* Description */}
             <div>
-              <label className="block text-sm text-white/60 mb-2">
-                Description <span className="text-white/20">(optionnel)</span>
+              <label className={`block text-sm mb-2 ${labelColor}`}>
+                {t('description_field')} <span className={labelMuted}>{t('optional')}</span>
               </label>
               <textarea
                 value={description}
@@ -385,7 +407,7 @@ export default function UploadPage() {
             {/* Ville + Région */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-white/60 mb-2">Ville</label>
+                <label className={`block text-sm mb-2 ${labelColor}`}>{t('city')}</label>
                 <input
                   type="text"
                   value={ville}
@@ -395,21 +417,21 @@ export default function UploadPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/60 mb-2">Région</label>
+                <label className={`block text-sm mb-2 ${labelColor}`}>{t('region')}</label>
                 <div className="relative">
                   <select
                     value={region}
                     onChange={(e) => setRegion(e.target.value)}
                     className="input-field appearance-none pr-8"
                   >
-                    <option value="">Sélectionner</option>
+                    <option value="">{t('select')}</option>
                     {REGIONS.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
                   <ChevronDown
                     size={15}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none"
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 ${labelMuted} pointer-events-none`}
                   />
                 </div>
               </div>
@@ -417,8 +439,8 @@ export default function UploadPage() {
 
             {/* Catégorie (obligatoire) */}
             <div>
-              <label className="block text-sm text-white/60 mb-2">
-                Catégorie <span className="text-faso-red">*</span>
+              <label className={`block text-sm mb-2 ${labelColor}`}>
+                {t('category')} <span className="text-faso-red">*</span>
               </label>
               <div className="relative">
                 <select
@@ -427,22 +449,22 @@ export default function UploadPage() {
                   className="input-field appearance-none pr-8"
                   required
                 >
-                  <option value="">Choisir une catégorie</option>
+                  <option value="">{t('choose_category')}</option>
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
                 <ChevronDown
                   size={15}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none"
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 ${labelMuted} pointer-events-none`}
                 />
               </div>
             </div>
 
             {/* Tags */}
             <div>
-              <label className="block text-sm text-white/60 mb-2">
-                Tags <span className="text-white/20">(séparés par des virgules)</span>
+              <label className={`block text-sm mb-2 ${labelColor}`}>
+                {t('tags')} <span className={labelMuted}>{t('tags_hint')}</span>
               </label>
               <input
                 type="text"
@@ -455,7 +477,7 @@ export default function UploadPage() {
 
             {/* Licence */}
             <div>
-              <label className="block text-sm text-white/60 mb-3">Licence Creative Commons</label>
+              <label className={`block text-sm mb-3 ${labelColor}`}>{t('licence')}</label>
               <div className="grid grid-cols-2 gap-2">
                 {LICENCES.map((lic) => (
                   <button
@@ -463,13 +485,11 @@ export default function UploadPage() {
                     type="button"
                     onClick={() => setLicence(lic.value)}
                     className={`p-3 rounded-xl border text-left transition-all ${
-                      licence === lic.value
-                        ? 'border-faso-gold bg-faso-gold/10'
-                        : 'border-white/10 hover:border-white/20'
+                      licence === lic.value ? licenceActive : licenceInactive
                     }`}
                   >
-                    <span className="block font-medium text-sm text-white">{lic.label}</span>
-                    <span className="block text-xs text-white/40 mt-0.5 leading-tight">{lic.desc}</span>
+                    <span className={`block font-medium text-sm ${licenceTitle}`}>{lic.label}</span>
+                    <span className={`block text-xs mt-0.5 leading-tight ${licenceDesc}`}>{lic.desc}</span>
                   </button>
                 ))}
               </div>
@@ -489,11 +509,11 @@ export default function UploadPage() {
               }
               className="w-full btn-primary justify-center py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {status === 'idle' && <><Upload size={20} /> Envoyer pour publication</>}
-              {status === 'uploading' && <><Loader2 size={20} className="animate-spin" /> Upload en cours ({progress}%)</>}
-              {status === 'processing' && <><Loader2 size={20} className="animate-spin" /> Traitement en cours...</>}
-              {status === 'success' && <><CheckCircle size={20} /> Envoyé avec succès !</>}
-              {status === 'error' && <><AlertCircle size={20} /> Erreur — réessayer</>}
+              {status === 'idle'       && <><Upload      size={20} /> {t('submit')}</>}
+              {status === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> {t('uploading')} ({progress}%)</>}
+              {status === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
+              {status === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
+              {status === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
             </button>
 
             {/* Barre de progression */}
@@ -510,16 +530,16 @@ export default function UploadPage() {
             {status === 'success' && (
               <div className="card p-4 border border-faso-green/30 bg-faso-green/5 text-center">
                 <p className="text-faso-green font-medium text-sm">
-                  🎉 Merci ! Votre média sera examiné sous 48h.
+                  {t('success_msg')}
                 </p>
-                <p className="text-white/40 text-xs mt-1">
-                  Un email de confirmation a été envoyé à {contributeurEmail}
+                <p className={`text-xs mt-1 ${successEmailText}`}>
+                  {t('email_sent')} {contributeurEmail}
                 </p>
               </div>
             )}
 
-            <p className="text-xs text-white/20 text-center">
-              Vos médias sont vérifiés par notre équipe avant publication (24-48h)
+            <p className={`text-xs text-center ${teamText}`}>
+              {t('team_review')}
             </p>
           </div>
         </div>
