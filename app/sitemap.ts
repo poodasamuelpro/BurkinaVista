@@ -6,7 +6,7 @@ import { MetadataRoute } from 'next'
 import { queryMany } from '@/lib/db'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.com'
 
   let medias: { slug: string; created_at: string; updated_at: string | null }[] = []
   let categories: { slug: string }[] = []
@@ -41,11 +41,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }))
 
   return [
-    { url: baseUrl, changeFrequency: 'daily', priority: 1.0 },
-    { url: `${baseUrl}/upload`, changeFrequency: 'monthly', priority: 0.6 },
-    { url: `${baseUrl}/categories`, changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${baseUrl}/about`, changeFrequency: 'monthly', priority: 0.5 },
+    // Pages principales
+    { url: baseUrl,                           changeFrequency: 'daily',   priority: 1.0 },
+    { url: `${baseUrl}/categories`,           changeFrequency: 'weekly',  priority: 0.8 },
+    { url: `${baseUrl}/upload`,               changeFrequency: 'monthly', priority: 0.6 },
+    // Pages informatives
+    { url: `${baseUrl}/about`,                changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${baseUrl}/guide`,                changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${baseUrl}/licences`,             changeFrequency: 'monthly', priority: 0.4 },
+    { url: `${baseUrl}/cgu`,                  changeFrequency: 'monthly', priority: 0.3 },
+    { url: `${baseUrl}/confidentialite`,      changeFrequency: 'monthly', priority: 0.3 },
+    // Catégories dynamiques
     ...categoryUrls,
+    // Médias dynamiques
     ...mediaUrls,
   ]
-} 
+}
