@@ -1,6 +1,21 @@
 'use client'
 /**
- * components/layout/Navbar.tsx — Navigation principale bilingue + thème
+ * components/layout/Navbar.tsx
+ * Navigation principale BurkinaVista — responsive (mobile / tablet / desktop)
+ * 
+ * LOGIQUE :
+ * - Desktop (md+)  : Logo | Liens nav | Actions (Recherche, Thème, Contribuer)
+ * - Tablette (sm)  : Logo | Actions (Recherche, Thème, Contribuer, Burger)
+ * - Mobile (<sm)   : Logo | Actions (Recherche, Thème, Contribuer réduit, Burger)
+ *
+ * Menu burger (mobile/tablette) :
+ *   - Accueil, Explorer  ← déjà dans la barre donc on les garde (liens principaux)
+ *   - À propos, Guide, Contact  ← liens secondaires
+ *   - Toggle thème  ← pratique dans le menu
+ *   ❌ PAS de bouton Contribuer en double (déjà dans la barre)
+ *   ❌ PAS de switch langue (géré par l'icône flottante)
+ *
+ * TRADUCTION : gérée par FloatingLangSwitcher (composant flottant bas-gauche)
  */
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -12,27 +27,30 @@ import { useLocale } from '@/context/LocaleContext'
 import { useTranslations } from 'next-intl'
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [scrolled, setScrolled]     = useState(false)
+  const [menuOpen, setMenuOpen]     = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const pathname = usePathname()
-  const router = useRouter()
+  const pathname  = usePathname()
+  const router    = useRouter()
   const { theme, toggleTheme } = useTheme()
-  const { locale, switchLocale } = useLocale()
+  const { locale } = useLocale()
   const t = useTranslations('nav')
 
+  /* Scroll effect */
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  /* Fermer les overlays à chaque changement de page */
   useEffect(() => {
     setMenuOpen(false)
     setSearchOpen(false)
   }, [pathname])
 
+  /* Recherche */
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchQuery.trim()) {
@@ -42,37 +60,50 @@ export default function Navbar() {
     }
   }
 
-  const navLinks = [
-    { href: '/', label: t('home') },
+  const isLight = theme === 'light'
+
+  /* Liens principaux (desktop centre + burger) */
+  const primaryLinks = [
+    { href: '/',           label: t('home') },
     { href: '/categories', label: t('explore') },
-    { href: '/upload', label: t('contribute') },
   ]
 
-  const mobileSecondaryLinks = [
-    { href: '/about', label: t('about'), Icon: Info },
-    { href: '/guide', label: t('guide'), Icon: BookOpen },
+  /* Liens secondaires — uniquement dans le burger */
+  const secondaryLinks = [
+    { href: '/about',   label: t('about'),   Icon: Info },
+    { href: '/guide',   label: t('guide'),   Icon: BookOpen },
     { href: '/contact', label: t('contact'), Icon: MessageSquare },
   ]
 
   const quickSearches = t.raw('quick_searches') as string[]
 
-  const isLight = theme === 'light'
+  /* Classes conditionnelles navbar */
+  const navBg = scrolled
+    ? isLight
+      ? 'bg-white/95 backdrop-blur-xl border-b border-black/8 shadow-md'
+      : 'bg-faso-night/95 backdrop-blur-xl border-b border-white/5 shadow-2xl'
+    : 'bg-transparent'
+
+  /* Couleurs des liens */
+  const linkActive   = 'text-faso-gold'
+  const linkInactive = isLight
+    ? 'text-[#1A0F05]/70 hover:text-[#1A0F05]'
+    : 'text-white/70 hover:text-white'
+
+  const iconBtn = isLight
+    ? 'text-[#1A0F05]/60 hover:text-[#1A0F05] hover:bg-black/5'
+    : 'text-white/60 hover:text-white hover:bg-white/5'
 
   return (
     <>
-      <nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-          scrolled
-            ? (isLight
-                ? 'bg-faso-night/95 backdrop-blur-xl border-b border-black/8 shadow-lg'
-                : 'bg-faso-night/95 backdrop-blur-xl border-b border-white/5 shadow-2xl')
-            : 'bg-transparent'
-        }`}
-      >
+      {/* ═══════════════════════════════════════════════
+          BARRE PRINCIPALE
+      ═══════════════════════════════════════════════ */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${navBg}`}>
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-13 sm:h-16 md:h-20">
+          <div className="flex items-center justify-between h-14 sm:h-16 md:h-20">
 
-            {/* Logo — réduit sur mobile */}
+            {/* ── Logo ── */}
             <Link href="/" className="flex items-center group flex-shrink-0">
               <FasoLogo
                 size={22}
@@ -81,77 +112,68 @@ export default function Navbar() {
               />
             </Link>
 
-            {/* Liens desktop */}
-            <div className="hidden md:flex items-center gap-8">
-              {navLinks.map((link) => (
+            {/* ── Liens desktop (md+) ── */}
+            <div className="hidden md:flex items-center gap-6 lg:gap-8">
+              {primaryLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={`text-sm font-medium transition-colors duration-200 ${
-                    pathname === link.href
-                      ? 'text-faso-gold'
-                      : 'text-white/70 hover:text-white'
+                    pathname === link.href ? linkActive : linkInactive
                   }`}
                 >
                   {link.label}
                 </Link>
               ))}
-              <Link
-                href="/contact"
-                className={`text-sm font-medium transition-colors duration-200 ${
-                  pathname === '/contact'
-                    ? 'text-faso-gold'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                {t('contact')}
-              </Link>
+              {secondaryLinks.map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`text-sm font-medium transition-colors duration-200 ${
+                    pathname === href ? linkActive : linkInactive
+                  }`}
+                >
+                  {label}
+                </Link>
+              ))}
             </div>
 
-            {/* Actions */}
+            {/* ── Actions droites ── */}
             <div className="flex items-center gap-1 sm:gap-2">
 
               {/* Recherche */}
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label="Rechercher"
-                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
+                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all ${iconBtn}`}
               >
-                <Search size={15} />
+                <Search size={16} />
               </button>
 
               {/* Toggle thème */}
               <button
                 onClick={toggleTheme}
                 aria-label={isLight ? 'Mode sombre' : 'Mode clair'}
-                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
+                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all ${iconBtn} hover:text-faso-gold`}
               >
-                {isLight ? <Moon size={15} /> : <Sun size={15} />}
+                {isLight ? <Moon size={16} /> : <Sun size={16} />}
               </button>
 
-              {/* Switch langue — visible partout */}
-              <button
-                onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
-                aria-label="Changer la langue"
-                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-bold text-white/60 hover:text-faso-gold hover:bg-white/5 border border-white/10 hover:border-faso-gold/30 transition-all"
-              >
-                {locale === 'fr' ? 'EN' : 'FR'}
-              </button>
-
-              {/* Bouton Contribuer — un seul, adapté selon la taille */}
+              {/* ── Bouton Contribuer (toujours visible) ── */}
               <Link
                 href="/upload"
-                className="flex items-center gap-1 btn-gold text-[10px] sm:text-xs md:text-sm py-1.5 px-2 sm:py-2 sm:px-3 md:py-2 md:px-4"
+                className="flex items-center gap-1 btn-gold text-[10px] sm:text-xs md:text-sm
+                           py-1.5 px-2.5 sm:py-2 sm:px-3 md:py-2 md:px-4 rounded-xl"
               >
-                <Upload size={11} className="sm:w-[13px] sm:h-[13px] md:w-4 md:h-4" />
-                <span>{t('contribute')}</span>
+                <Upload size={12} className="sm:w-[13px] sm:h-[13px] md:w-4 md:h-4 flex-shrink-0" />
+                <span className="hidden xs:inline sm:inline">{t('contribute')}</span>
               </Link>
 
-              {/* Burger mobile */}
+              {/* Burger (visible en dessous de md) */}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                aria-label="Menu"
-                className="md:hidden w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5"
+                aria-label={menuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+                className={`md:hidden w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all ${iconBtn}`}
               >
                 {menuOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
@@ -159,39 +181,54 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Menu mobile */}
+        {/* ═══════════════════════════════════════════════
+            MENU MOBILE / TABLETTE
+            ❌ Pas de doublon "Contribuer"
+            ❌ Pas de switch langue (FloatingLangSwitcher)
+        ═══════════════════════════════════════════════ */}
         {menuOpen && (
-          <div className="md:hidden bg-faso-dusk border-t border-white/5 animate-slide-down">
-            <div className="px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-1">
+          <div
+            className={`md:hidden border-t animate-slide-down ${
+              isLight
+                ? 'bg-white/98 border-black/5'
+                : 'bg-faso-dusk border-white/5'
+            }`}
+          >
+            <div className="px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-0.5">
 
               {/* Liens principaux */}
-              {navLinks.map((link) => (
+              {primaryLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   onClick={() => setMenuOpen(false)}
-                  className={`px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium transition-colors ${
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                     pathname === link.href
                       ? 'text-faso-gold bg-faso-gold/10'
-                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                      : isLight
+                        ? 'text-[#1A0F05]/75 hover:text-[#1A0F05] hover:bg-black/4'
+                        : 'text-white/70 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   {link.label}
                 </Link>
               ))}
 
-              <div className="faso-divider my-1.5 sm:my-2" />
+              {/* Séparateur drapeau */}
+              <div className="faso-divider my-2" />
 
-              {/* Liens secondaires */}
-              {mobileSecondaryLinks.map(({ href, label, Icon }) => (
+              {/* Liens secondaires avec icônes */}
+              {secondaryLinks.map(({ href, label, Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   onClick={() => setMenuOpen(false)}
-                  className={`px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
                     pathname === href
                       ? 'text-faso-gold bg-faso-gold/10'
-                      : 'text-white/50 hover:text-white hover:bg-white/5'
+                      : isLight
+                        ? 'text-[#1A0F05]/55 hover:text-[#1A0F05] hover:bg-black/4'
+                        : 'text-white/50 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   <Icon size={15} className="flex-shrink-0" />
@@ -199,48 +236,46 @@ export default function Navbar() {
                 </Link>
               ))}
 
-              <div className="faso-divider my-1.5 sm:my-2" />
+              {/* Séparateur drapeau */}
+              <div className="faso-divider my-2" />
 
-              {/* Switch langue + thème mobile dans le menu */}
-              <div className="flex gap-2 px-2 sm:px-4 py-2">
-                <button
-                  onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
-                  className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-bold text-white/60 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
-                >
-                  {locale === 'fr' ? '🇬🇧 English' : '🇫🇷 Français'}
-                </button>
-                <button
-                  onClick={() => { toggleTheme(); setMenuOpen(false) }}
-                  className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-bold text-white/60 hover:text-faso-gold hover:border-faso-gold/30 transition-all flex items-center justify-center gap-2"
-                >
-                  {isLight ? <Moon size={14} /> : <Sun size={14} />}
-                  {isLight ? (locale === 'fr' ? 'Sombre' : 'Dark') : (locale === 'fr' ? 'Clair' : 'Light')}
-                </button>
-              </div>
-
-              {/* CTA Contribuer dans le menu */}
-              <Link
-                href="/upload"
-                onClick={() => setMenuOpen(false)}
-                className="btn-gold justify-center py-2.5 sm:py-3 mt-1"
+              {/* Toggle thème dans le menu mobile */}
+              <button
+                onClick={() => { toggleTheme(); setMenuOpen(false) }}
+                className={`w-full px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
+                  isLight
+                    ? 'text-[#1A0F05]/60 hover:text-[#1A0F05] hover:bg-black/4'
+                    : 'text-white/50 hover:text-white hover:bg-white/5'
+                }`}
               >
-                <Upload size={16} /> {t('contribute')}
-              </Link>
+                {isLight ? <Moon size={15} className="flex-shrink-0" /> : <Sun size={15} className="flex-shrink-0" />}
+                {isLight
+                  ? (locale === 'fr' ? 'Passer en mode sombre' : 'Switch to dark mode')
+                  : (locale === 'fr' ? 'Passer en mode clair'  : 'Switch to light mode')
+                }
+              </button>
+
             </div>
           </div>
         )}
       </nav>
 
-      {/* Modal de recherche */}
+      {/* ═══════════════════════════════════════════════
+          MODAL RECHERCHE
+      ═══════════════════════════════════════════════ */}
       {searchOpen && (
         <div
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-start justify-center pt-16 sm:pt-20 md:pt-24 px-3 sm:px-4"
+          className={`fixed inset-0 z-[100] backdrop-blur-sm flex items-start justify-center pt-16 sm:pt-20 md:pt-24 px-3 sm:px-4 ${
+            isLight ? 'bg-white/70' : 'bg-black/80'
+          }`}
           onClick={(e) => e.target === e.currentTarget && setSearchOpen(false)}
         >
           <div className="w-full max-w-2xl animate-scale-in">
             <form onSubmit={handleSearch} className="relative">
               <Search
-                className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-white/40"
+                className={`absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 ${
+                  isLight ? 'text-[#1A0F05]/40' : 'text-white/40'
+                }`}
                 size={18}
               />
               <input
@@ -254,7 +289,9 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={() => setSearchOpen(false)}
-                className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+                className={`absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 transition-colors ${
+                  isLight ? 'text-[#1A0F05]/40 hover:text-[#1A0F05]' : 'text-white/40 hover:text-white'
+                }`}
               >
                 <X size={20} />
               </button>
