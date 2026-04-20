@@ -70,14 +70,14 @@ export default function Navbar() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16 md:h-20">
+          <div className="flex items-center justify-between h-13 sm:h-16 md:h-20">
 
-            {/* Logo */}
+            {/* Logo — réduit sur mobile */}
             <Link href="/" className="flex items-center group flex-shrink-0">
               <FasoLogo
-                size={30}
+                size={22}
                 showName={true}
-                className="group-hover:opacity-90 transition-opacity sm:scale-110 md:scale-125 origin-left"
+                className="group-hover:opacity-90 transition-opacity sm:scale-125 md:scale-150 origin-left [&_span]:text-[10px] sm:[&_span]:text-xs md:[&_span]:text-sm [&_p]:text-[7px] sm:[&_p]:text-[8px]"
               />
             </Link>
 
@@ -110,34 +110,38 @@ export default function Navbar() {
 
             {/* Actions */}
             <div className="flex items-center gap-1 sm:gap-2">
+
               {/* Recherche */}
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label="Rechercher"
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
+                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
               >
-                <Search size={17} />
+                <Search size={15} className="sm:w-[18px] sm:h-[18px]" />
               </button>
 
               {/* Toggle thème */}
               <button
                 onClick={toggleTheme}
                 aria-label={isLight ? 'Mode sombre' : 'Mode clair'}
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
+                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
               >
-                {isLight ? <Moon size={17} /> : <Sun size={17} />}
+                {isLight
+                  ? <Moon size={15} className="sm:w-[18px] sm:h-[18px]" />
+                  : <Sun size={15} className="sm:w-[18px] sm:h-[18px]" />
+                }
               </button>
 
-              {/* Switch langue — desktop uniquement */}
+              {/* Switch langue — visible sur mobile ET desktop */}
               <button
                 onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
                 aria-label="Changer la langue"
-                className="hidden md:flex w-9 h-9 rounded-xl items-center justify-center text-xs font-bold text-white/60 hover:text-faso-gold hover:bg-white/5 border border-white/10 hover:border-faso-gold/30 transition-all"
+                className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-bold text-white/60 hover:text-faso-gold hover:bg-white/5 border border-white/10 hover:border-faso-gold/30 transition-all"
               >
                 {locale === 'fr' ? 'EN' : 'FR'}
               </button>
 
-              {/* Bouton Contribuer desktop */}
+              {/* Bouton Contribuer — réduit sur mobile, plein sur desktop */}
               <Link
                 href="/upload"
                 className="hidden md:flex btn-gold text-sm py-2 px-4"
@@ -146,13 +150,22 @@ export default function Navbar() {
                 {t('contribute')}
               </Link>
 
+              {/* Bouton Contribuer mobile — icône + texte petit */}
+              <Link
+                href="/upload"
+                className="md:hidden flex items-center gap-1 bg-faso-gold text-faso-night font-semibold rounded-lg px-2 py-1.5 text-[10px] leading-none transition-all hover:opacity-90"
+              >
+                <Upload size={11} />
+                <span>{t('contribute')}</span>
+              </Link>
+
               {/* Burger mobile */}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 aria-label="Menu"
-                className="md:hidden w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5"
+                className="md:hidden w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5"
               >
-                {menuOpen ? <X size={20} /> : <Menu size={20} />}
+                {menuOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
             </div>
           </div>
@@ -200,7 +213,7 @@ export default function Navbar() {
 
               <div className="faso-divider my-1.5 sm:my-2" />
 
-              {/* Switch langue + thème mobile */}
+              {/* Switch langue + thème mobile dans le menu */}
               <div className="flex gap-2 px-2 sm:px-4 py-2">
                 <button
                   onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
@@ -259,7 +272,7 @@ export default function Navbar() {
               </button>
             </form>
 
-            {/* Suggestions rapides — scroll horizontal sur mobile */}
+            {/* Suggestions rapides */}
             <div className="mt-3 sm:mt-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-x-visible scrollbar-hide">
               {quickSearches.map((tag: string) => (
                 <button
