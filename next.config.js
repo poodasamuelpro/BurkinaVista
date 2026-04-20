@@ -9,6 +9,7 @@ const nextConfig = {
   },
   experimental: {
     serverActions: { allowedOrigins: ['localhost:3000', 'burkina-vista.vercel.app'] },
+    serverComponentsExternalPackages: ['@neondatabase/serverless'],
   },
 }
 
