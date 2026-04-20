@@ -43,8 +43,11 @@
    VARIABLES — LIGHT MODE
 ===================== */
 [data-theme="light"] {
-  --faso-night: #F5F0E8;
-  --faso-dusk: #EDE7DA;
+  /* Fond principal : gris-bleu ardoise doux — propre, reposant, s'accorde avec les couleurs Faso */
+  --faso-night: #E8EDF2;
+  /* Fond secondaire : légèrement plus sombre pour les zones menu/footer */
+  --faso-dusk: #DDE3EA;
+  /* Fond des cartes : blanc pur pour le contraste avec le fond ardoise */
   --faso-card: #FFFFFF;
 
   --text-primary: #1A0F05;
@@ -302,7 +305,7 @@ select.input-field option {
    NAVBAR
 ===================== */
 [data-theme="light"] .navbar-bg {
-  background: rgba(245,240,232,0.95) !important;
+  background: rgba(232,237,242,0.95) !important;
   border-bottom: 1px solid rgba(0,0,0,0.06);
 }
 
@@ -536,8 +539,8 @@ select.input-field option {
 [data-theme="light"] .text-white\/60  { color: rgba(26,15,5,0.6)  !important; }
 [data-theme="light"] .text-white      { color: #1A0F05             !important; }
 
-[data-theme="light"] .bg-faso-night   { background-color: #F5F0E8 !important; }
-[data-theme="light"] .bg-faso-dusk    { background-color: #EDE7DA !important; }
+[data-theme="light"] .bg-faso-night   { background-color: #E8EDF2 !important; }
+[data-theme="light"] .bg-faso-dusk    { background-color: #DDE3EA !important; }
 [data-theme="light"] .bg-faso-card,
 [data-theme="light"] .bg-white\/3     { background-color: rgba(0,0,0,0.02) !important; }
 
@@ -550,10 +553,19 @@ select.input-field option {
 
 /* Navbar light */
 [data-theme="light"] nav.bg-faso-night\/95 {
-  background-color: rgba(245,240,232,0.95) !important;
+  background-color: rgba(232,237,242,0.95) !important;
+}
+/* Navbar light — classe bg-white/95 utilisée par le nouveau Navbar remanié */
+[data-theme="light"] nav.bg-white\/95 {
+  background-color: rgba(232,237,242,0.97) !important;
 }
 [data-theme="light"] nav .text-white\/60 { color: rgba(26,15,5,0.6) !important; }
 [data-theme="light"] nav .text-white     { color: #1A0F05           !important; }
+
+/* FloatingLangSwitcher — override fond light */
+[data-theme="light"] .floating-lang-btn {
+  background-color: #FFFFFF !important;
+}
 
 /* Search overlay light */
 [data-theme="light"] .backdrop-blur-sm { backdrop-filter: blur(4px); }
