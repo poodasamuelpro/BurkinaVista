@@ -1,6 +1,6 @@
 /**
  * app/licences/page.tsx — Page des licences Creative Commons
- * Explication complète des licences utilisées sur BurkinaVista
+ * Explication complète des licences utilisées sur BurkinaVista 
  */
 import type { Metadata } from 'next'
 import Link from 'next/link'
