@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { Send, Loader2 } from 'lucide-react'
 import FasoLogo from '@/components/ui/FasoLogo'
 
-// Icônes SVG inline pour Facebook et LinkedIn (pas dans lucide-react)
 function FacebookIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -100,9 +99,10 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="md:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-3 mb-4">
+            {/* Logo cliquable → accueil */}
+            <Link href="/" className="flex items-center gap-3 mb-4 hover:opacity-80 transition-opacity">
               <FasoLogo size={36} showName={true} />
-            </div>
+            </Link>
             <p className="text-white/50 text-sm leading-relaxed max-w-xs mt-4">
               La bibliothèque visuelle libre du Burkina Faso. Des images authentiques,
               par des Burkinabè, pour le monde entier.
