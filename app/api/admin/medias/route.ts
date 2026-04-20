@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyAdminToken } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 import { sendApprovalConfirmation } from '@/lib/email'
+import { deleteFromCloudinary } from '@/lib/cloudinary'
 import type { Media } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -74,7 +75,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'id requis' }, { status: 400 })
     }
 
-    // Récupérer le média avant suppression (pour éventuellement supprimer sur Cloudinary)
+    // Récupérer le média avant suppression
     const media = await queryOne<Media>('SELECT * FROM medias WHERE id = $1', [id])
 
     if (!media) {
@@ -84,7 +85,6 @@ export async function DELETE(req: NextRequest) {
     // Supprimer de Cloudinary si c'est une photo
     if (media.type === 'photo' && media.cloudinary_public_id) {
       try {
-        const { deleteFromCloudinary } = await import('@/lib/cloudinary')
         await deleteFromCloudinary(media.cloudinary_public_id)
       } catch (err) {
         console.error('Erreur suppression Cloudinary:', err)
