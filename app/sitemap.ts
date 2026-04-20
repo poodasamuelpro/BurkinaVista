@@ -8,15 +8,24 @@ import { queryMany } from '@/lib/db'
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
 
-  // Récupérer tous les médias approuvés
-  const medias = await queryMany<{ slug: string; created_at: string; updated_at: string | null }>(
-    "SELECT slug, created_at, updated_at FROM medias WHERE statut = 'approved' ORDER BY created_at DESC"
-  )
+  let medias: { slug: string; created_at: string; updated_at: string | null }[] = []
+  let categories: { slug: string }[] = []
 
-  // Récupérer les catégories
-  const categories = await queryMany<{ slug: string }>(
-    'SELECT slug FROM categories ORDER BY nom ASC'
-  )
+  try {
+    medias = await queryMany<{ slug: string; created_at: string; updated_at: string | null }>(
+      "SELECT slug, created_at, updated_at FROM medias WHERE statut = 'approved' ORDER BY created_at DESC"
+    )
+  } catch (err) {
+    console.error('[Sitemap] Erreur chargement medias:', err)
+  }
+
+  try {
+    categories = await queryMany<{ slug: string }>(
+      'SELECT slug FROM categories ORDER BY nom ASC'
+    )
+  } catch (err) {
+    console.error('[Sitemap] Erreur chargement categories:', err)
+  }
 
   const mediaUrls: MetadataRoute.Sitemap = medias.map((m) => ({
     url: `${baseUrl}/photos/${m.slug}`,
