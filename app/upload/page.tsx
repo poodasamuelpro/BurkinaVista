@@ -2,7 +2,7 @@
 /**
  * app/upload/page.tsx — Page de contribution de médias
  * Sans authentification requise
- * Formulaire complet : contributeur + média + IA SEO
+ * Formulaire complet : contributeur + média
  */
 import { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -39,7 +39,7 @@ interface FileWithPreview {
   type: 'photo' | 'video'
 }
 
-type UploadStatus = 'idle' | 'uploading' | 'analyzing' | 'success' | 'error'
+type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error'
 
 export default function UploadPage() {
   const router = useRouter()
@@ -132,7 +132,7 @@ export default function UploadPage() {
       formData.append('tags', tags)
 
       try {
-        setStatus('analyzing')
+        setStatus('processing')
         setProgress(60 + Math.round((i / files.length) * 35))
 
         const res = await fetch('/api/upload', {
@@ -181,8 +181,7 @@ export default function UploadPage() {
             <span className="text-gradient-faso">Burkina Faso</span>
           </h1>
           <p className="text-white/50 max-w-xl mx-auto text-sm md:text-base">
-            Vos photos et vidéos seront analysées par notre IA pour un référencement optimal,
-            puis vérifiées par notre équipe avant publication.
+            Vos photos et vidéos seront vérifiées par notre équipe avant publication.
           </p>
         </div>
 
@@ -342,13 +341,12 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* Note IA */}
+            {/* Note info */}
             <div className="card p-4 flex items-start gap-3">
               <Info size={15} className="text-faso-gold flex-shrink-0 mt-0.5" />
               <p className="text-xs text-white/50 leading-relaxed">
-                Notre IA Gemini analyse automatiquement votre média et génère un titre,
-                une description et des tags SEO optimisés. Elle n'invente rien — elle améliore
-                uniquement ce qu'elle voit réellement.
+                Les champs titre, description et tags sont optionnels.
+                Notre équipe s'assure de la qualité de chaque média avant publication.
               </p>
             </div>
           </div>
@@ -359,7 +357,7 @@ export default function UploadPage() {
             {/* Titre */}
             <div>
               <label className="block text-sm text-white/60 mb-2">
-                Titre <span className="text-white/20">(optionnel — l'IA complète)</span>
+                Titre <span className="text-white/20">(optionnel)</span>
               </label>
               <input
                 type="text"
@@ -493,7 +491,7 @@ export default function UploadPage() {
             >
               {status === 'idle' && <><Upload size={20} /> Envoyer pour publication</>}
               {status === 'uploading' && <><Loader2 size={20} className="animate-spin" /> Upload en cours ({progress}%)</>}
-              {status === 'analyzing' && <><Loader2 size={20} className="animate-spin" /> Analyse IA en cours...</>}
+              {status === 'processing' && <><Loader2 size={20} className="animate-spin" /> Traitement en cours...</>}
               {status === 'success' && <><CheckCircle size={20} /> Envoyé avec succès !</>}
               {status === 'error' && <><AlertCircle size={20} /> Erreur — réessayer</>}
             </button>
