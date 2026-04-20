@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Search, Upload, Menu, X } from 'lucide-react'
+import { Search, Upload, Menu, X, BookOpen, Info } from 'lucide-react'
 import FasoLogo from '@/components/ui/FasoLogo'
 
 export default function Navbar() {
@@ -24,7 +24,6 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Fermer le menu mobile lors du changement de route
   useEffect(() => {
     setMenuOpen(false)
     setSearchOpen(false)
@@ -39,10 +38,17 @@ export default function Navbar() {
     }
   }
 
+  // Liens principaux — desktop + mobile
   const navLinks = [
     { href: '/', label: 'Accueil' },
     { href: '/categories', label: 'Explorer' },
     { href: '/upload', label: 'Contribuer' },
+  ]
+
+  // Liens secondaires — mobile uniquement
+  const mobileSecondaryLinks = [
+    { href: '/about', label: 'À propos', Icon: Info },
+    { href: '/guide', label: 'Guide du contributeur', Icon: BookOpen },
   ]
 
   return (
@@ -119,6 +125,8 @@ export default function Navbar() {
         {menuOpen && (
           <div className="md:hidden bg-faso-dusk border-t border-white/5 animate-slide-down">
             <div className="px-4 py-4 flex flex-col gap-1">
+
+              {/* Liens principaux */}
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -133,7 +141,29 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+
               <div className="faso-divider my-2" />
+
+              {/* Liens secondaires */}
+              {mobileSecondaryLinks.map(({ href, label, Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMenuOpen(false)}
+                  className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
+                    pathname === href
+                      ? 'text-faso-gold bg-faso-gold/10'
+                      : 'text-white/50 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon size={15} className="flex-shrink-0" />
+                  {label}
+                </Link>
+              ))}
+
+              <div className="faso-divider my-2" />
+
+              {/* CTA Contribuer */}
               <Link
                 href="/upload"
                 onClick={() => setMenuOpen(false)}
