@@ -1,10 +1,11 @@
 /**
  * app/page.tsx — Page d'accueil
  * Grille de médias avec filtrage et pagination
- * Sans Supabase — utilise Neon via lib/db.ts
+ * Bilingue via next-intl — textes traduits
  */
 import { Suspense } from 'react'
 import { queryMany, queryOne } from '@/lib/db'
+import { getTranslations } from 'next-intl/server'
 import HeroSection from '@/components/photos/HeroSection'
 import PhotoGrid from '@/components/photos/PhotoGrid'
 import CategoriesBar from '@/components/photos/CategoriesBar'
@@ -22,6 +23,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const page = parseInt(pageStr || '1')
   const limit = 30
   const offset = (page - 1) * limit
+  const t = await getTranslations('home')
 
   // Construction de la requête dynamique
   const conditions: string[] = ["statut = 'approved'"]
@@ -93,15 +95,15 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           searchQuery={q}
         />
 
-        {/* Résultats de recherche */}
+        {/* Résultats de recherche — texte traduit */}
         {q && (
           <div className="mb-8 animate-fade-in">
-            <h1 className="font-display text-2xl text-white">
-              Résultats pour{' '}
+            <h1 className="font-display text-2xl" style={{ color: 'var(--text-primary)' }}>
+              {t('results_for')}{' '}
               <span className="text-gradient-gold">"{q}"</span>
             </h1>
-            <p className="text-white/40 text-sm mt-1">
-              {total} média{total > 1 ? 's' : ''} trouvé{total > 1 ? 's' : ''}
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {total} {total > 1 ? t('medias_found') : t('media_found')}
             </p>
           </div>
         )}

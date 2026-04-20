@@ -1,12 +1,16 @@
 'use client'
 /**
- * components/layout/Footer.tsx — Footer bilingue avec email contact
+ * components/layout/Footer.tsx
+ * Footer bilingue avec newsletter inline
+ * Logo centré en mobile, aligné à gauche en desktop
+ * Adapté mode clair/sombre
  */
 import { useState } from 'react'
 import Link from 'next/link'
 import { Send, Loader2, Mail } from 'lucide-react'
 import FasoLogo from '@/components/ui/FasoLogo'
 import { useTranslations } from 'next-intl'
+import { useTheme } from '@/context/ThemeContext'
 
 function FacebookIcon({ size = 16 }: { size?: number }) {
   return (
@@ -43,6 +47,8 @@ export default function Footer() {
   const [message, setMessage] = useState('')
   const [success, setSuccess] = useState(false)
   const t = useTranslations('footer')
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -79,34 +85,48 @@ export default function Footer() {
   ]
 
   const exploreLinks = [
-    { label: t('photos'), href: '/?type=photo' },
-    { label: t('videos'), href: '/?type=video' },
-    { label: t('categories'), href: '/categories' },
-    { label: t('contribute_link'), href: '/upload' },
-    { label: t('guide_link'), href: '/guide' },
+    { label: t('photos'),         href: '/?type=photo' },
+    { label: t('videos'),         href: '/?type=video' },
+    { label: t('categories'),     href: '/categories' },
+    { label: t('contribute_link'),href: '/upload' },
+    { label: t('guide_link'),     href: '/guide' },
   ]
 
   const infoLinks = [
-    { label: t('about'), href: '/about' },
+    { label: t('about'),    href: '/about' },
     { label: t('licences'), href: '/licences' },
-    { label: t('cgu'), href: '/cgu' },
-    { label: t('privacy'), href: '/confidentialite' },
-    { label: t('contact'), href: '/contact' },
+    { label: t('cgu'),      href: '/cgu' },
+    { label: t('privacy'),  href: '/confidentialite' },
+    { label: t('contact'),  href: '/contact' },
   ]
 
+  /* Couleurs adaptées au thème */
+  const mutedText = isLight ? 'text-[rgba(28,42,58,0.5)]' : 'text-white/40'
+  const labelText = isLight ? 'text-[#1C2A3A] font-semibold' : 'text-white font-semibold'
+  const borderColor = isLight ? 'border-[rgba(28,42,58,0.09)]' : 'border-white/5'
+  const socialBtn = isLight
+    ? 'border-[rgba(28,42,58,0.12)] text-[rgba(28,42,58,0.4)] hover:text-faso-gold hover:border-faso-gold/30'
+    : 'border-white/10 text-white/40 hover:text-faso-gold hover:border-faso-gold/30'
+
   return (
-    <footer className="border-t border-white/5 bg-faso-dusk/50 mt-24">
+    <footer className={`border-t mt-24 ${borderColor} ${isLight ? 'bg-[#E2EAF4]' : 'bg-faso-dusk/50'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
 
-          {/* Brand */}
-          <div className="md:col-span-2 lg:col-span-1">
-            <Link href="/" className="flex items-center gap-3 mb-4 hover:opacity-80 transition-opacity">
+          {/* ── Brand / Logo ── */}
+          <div className="md:col-span-2 lg:col-span-1 flex flex-col items-center md:items-start text-center md:text-left">
+            {/* Logo centré en mobile, aligné gauche en md+ */}
+            <Link
+              href="/"
+              className="flex items-center justify-center md:justify-start gap-3 mb-4 hover:opacity-80 transition-opacity"
+            >
               <FasoLogo size={36} showName={true} />
             </Link>
-            <p className="text-white/50 text-sm leading-relaxed max-w-xs mt-4">
+
+            <p className={`text-sm leading-relaxed max-w-xs mt-2 ${mutedText}`}>
               {t('tagline')}
             </p>
+
             {/* Email de contact */}
             <a
               href="mailto:BurkinaVista@gmail.com"
@@ -115,7 +135,9 @@ export default function Footer() {
               <Mail size={14} />
               {t('email_contact')}
             </a>
+
             <div className="faso-divider w-24 mt-5" />
+
             {/* Réseaux sociaux */}
             <div className="flex gap-3 mt-5">
               {socialLinks.map(({ Icon, href, label }) => (
@@ -125,7 +147,7 @@ export default function Footer() {
                   aria-label={label}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center text-white/40 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
+                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${socialBtn}`}
                 >
                   <Icon size={16} />
                 </a>
@@ -133,15 +155,15 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Explorer */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">{t('explore')}</h3>
+          {/* ── Explorer ── */}
+          <div className="flex flex-col items-center md:items-start text-center md:text-left">
+            <h3 className={`text-sm mb-4 ${labelText}`}>{t('explore')}</h3>
             <ul className="space-y-3">
               {exploreLinks.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className="text-sm text-white/40 hover:text-faso-gold transition-colors"
+                    className={`text-sm hover:text-faso-gold transition-colors ${mutedText}`}
                   >
                     {link.label}
                   </Link>
@@ -150,15 +172,15 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Informations */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-4">{t('info')}</h3>
+          {/* ── Informations ── */}
+          <div className="flex flex-col items-center md:items-start text-center md:text-left">
+            <h3 className={`text-sm mb-4 ${labelText}`}>{t('info')}</h3>
             <ul className="space-y-3">
               {infoLinks.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className="text-sm text-white/40 hover:text-faso-gold transition-colors"
+                    className={`text-sm hover:text-faso-gold transition-colors ${mutedText}`}
                   >
                     {link.label}
                   </Link>
@@ -167,19 +189,19 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Newsletter */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-2">{t('newsletter_title')}</h3>
-            <p className="text-xs text-white/40 mb-4 leading-relaxed">
+          {/* ── Newsletter ── */}
+          <div className="flex flex-col items-center md:items-start">
+            <h3 className={`text-sm mb-2 ${labelText}`}>{t('newsletter_title')}</h3>
+            <p className={`text-xs mb-4 leading-relaxed text-center md:text-left ${mutedText}`}>
               {t('newsletter_desc')}
             </p>
 
             {success ? (
-              <div className="bg-faso-green/10 border border-faso-green/30 rounded-xl p-4">
+              <div className="bg-faso-green/10 border border-faso-green/30 rounded-xl p-4 w-full">
                 <p className="text-faso-green text-sm font-medium">✅ {message}</p>
               </div>
             ) : (
-              <form onSubmit={handleSubscribe} className="space-y-2">
+              <form onSubmit={handleSubscribe} className="space-y-2 w-full">
                 <input
                   type="text"
                   value={nom}
@@ -217,20 +239,20 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Copyright */}
-        <div className="border-t border-white/5 mt-12 pt-8 flex flex-col items-center gap-2 text-center">
-          <p className="text-xs text-white/20">
+        {/* ── Copyright ── */}
+        <div className={`border-t mt-12 pt-8 flex flex-col items-center gap-2 text-center ${borderColor}`}>
+          <p className={`text-xs ${isLight ? 'text-[rgba(28,42,58,0.3)]' : 'text-white/20'}`}>
             © {new Date().getFullYear()} BurkinaVista — {t('copyright')}
           </p>
           <a
             href="mailto:BurkinaVista@gmail.com"
-            className="text-xs text-faso-gold/50 hover:text-faso-gold transition-colors"
+            className="text-xs text-faso-gold/60 hover:text-faso-gold transition-colors"
           >
             {t('email_contact')}
           </a>
-          <p className="text-xs text-white/20">
+          <p className={`text-xs ${isLight ? 'text-[rgba(28,42,58,0.3)]' : 'text-white/20'}`}>
             🇧🇫 <span className="text-faso-red">Burkina</span>
-            <span className="text-white/20"> · </span>
+            <span className={isLight ? 'text-[rgba(28,42,58,0.2)]'  : 'text-white/20'}> · </span>
             <span className="text-faso-gold">Vista</span>
           </p>
         </div>
