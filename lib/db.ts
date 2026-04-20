@@ -58,4 +58,4 @@ export async function execute(
   }
 }
 
-export default sql
+export default sql 
