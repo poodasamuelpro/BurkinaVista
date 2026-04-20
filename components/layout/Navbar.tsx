@@ -1,14 +1,15 @@
 'use client'
 /**
- * components/layout/Navbar.tsx — Navigation principale
- * Sans authentification utilisateur (Supabase supprimé)
- * Garde : Logo, liens, bouton Contribuer, recherche, menu mobile
+ * components/layout/Navbar.tsx — Navigation principale bilingue + thème
  */
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Search, Upload, Menu, X, BookOpen, Info } from 'lucide-react'
+import { Search, Upload, Menu, X, BookOpen, Info, Sun, Moon, MessageSquare } from 'lucide-react'
 import FasoLogo from '@/components/ui/FasoLogo'
+import { useTheme } from '@/context/ThemeContext'
+import { useLocale } from '@/context/LocaleContext'
+import { useTranslations } from 'next-intl'
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
@@ -17,6 +18,9 @@ export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState('')
   const pathname = usePathname()
   const router = useRouter()
+  const { theme, toggleTheme } = useTheme()
+  const { locale, switchLocale } = useLocale()
+  const t = useTranslations('nav')
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -38,25 +42,30 @@ export default function Navbar() {
     }
   }
 
-  // Liens principaux — desktop + mobile
   const navLinks = [
-    { href: '/', label: 'Accueil' },
-    { href: '/categories', label: 'Explorer' },
-    { href: '/upload', label: 'Contribuer' },
+    { href: '/', label: t('home') },
+    { href: '/categories', label: t('explore') },
+    { href: '/upload', label: t('contribute') },
   ]
 
-  // Liens secondaires — mobile uniquement
   const mobileSecondaryLinks = [
-    { href: '/about', label: 'À propos', Icon: Info },
-    { href: '/guide', label: 'Guide du contributeur', Icon: BookOpen },
+    { href: '/about', label: t('about'), Icon: Info },
+    { href: '/guide', label: t('guide'), Icon: BookOpen },
+    { href: '/contact', label: t('contact'), Icon: MessageSquare },
   ]
+
+  const quickSearches = t.raw('quick_searches') as string[]
+
+  const isLight = theme === 'light'
 
   return (
     <>
       <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           scrolled
-            ? 'bg-faso-night/95 backdrop-blur-xl border-b border-white/5 shadow-2xl'
+            ? (isLight
+                ? 'bg-faso-night/95 backdrop-blur-xl border-b border-black/8 shadow-lg'
+                : 'bg-faso-night/95 backdrop-blur-xl border-b border-white/5 shadow-2xl')
             : 'bg-transparent'
         }`}
       >
@@ -87,10 +96,20 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              <Link
+                href="/contact"
+                className={`text-sm font-medium transition-colors duration-200 ${
+                  pathname === '/contact'
+                    ? 'text-faso-gold'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                {t('contact')}
+              </Link>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {/* Recherche */}
               <button
                 onClick={() => setSearchOpen(true)}
@@ -100,13 +119,31 @@ export default function Navbar() {
                 <Search size={18} />
               </button>
 
+              {/* Toggle thème */}
+              <button
+                onClick={toggleTheme}
+                aria-label={isLight ? 'Mode sombre' : 'Mode clair'}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
+              >
+                {isLight ? <Moon size={18} /> : <Sun size={18} />}
+              </button>
+
+              {/* Switch langue */}
+              <button
+                onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
+                aria-label="Changer la langue"
+                className="hidden md:flex w-9 h-9 rounded-xl items-center justify-center text-xs font-bold text-white/60 hover:text-faso-gold hover:bg-white/5 border border-white/10 hover:border-faso-gold/30 transition-all"
+              >
+                {locale === 'fr' ? 'EN' : 'FR'}
+              </button>
+
               {/* Bouton Contribuer desktop */}
               <Link
                 href="/upload"
                 className="hidden md:flex btn-gold text-sm py-2 px-4"
               >
                 <Upload size={16} />
-                Contribuer
+                {t('contribute')}
               </Link>
 
               {/* Burger mobile */}
@@ -163,13 +200,30 @@ export default function Navbar() {
 
               <div className="faso-divider my-2" />
 
+              {/* Switch langue + thème mobile */}
+              <div className="flex gap-2 px-4 py-2">
+                <button
+                  onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
+                  className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-bold text-white/60 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
+                >
+                  {locale === 'fr' ? '🇬🇧 English' : '🇫🇷 Français'}
+                </button>
+                <button
+                  onClick={() => { toggleTheme(); setMenuOpen(false) }}
+                  className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-bold text-white/60 hover:text-faso-gold hover:border-faso-gold/30 transition-all flex items-center justify-center gap-2"
+                >
+                  {isLight ? <Moon size={14} /> : <Sun size={14} />}
+                  {isLight ? (locale === 'fr' ? 'Sombre' : 'Dark') : (locale === 'fr' ? 'Clair' : 'Light')}
+                </button>
+              </div>
+
               {/* CTA Contribuer */}
               <Link
                 href="/upload"
                 onClick={() => setMenuOpen(false)}
-                className="btn-gold justify-center py-3"
+                className="btn-gold justify-center py-3 mt-1"
               >
-                <Upload size={16} /> Contribuer
+                <Upload size={16} /> {t('contribute')}
               </Link>
             </div>
           </div>
@@ -193,7 +247,7 @@ export default function Navbar() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher des photos, vidéos, lieux..."
+                placeholder={t('search_placeholder')}
                 className="w-full pl-14 pr-12 py-5 rounded-2xl text-lg input-field border-faso-gold/30"
               />
               <button
@@ -206,20 +260,18 @@ export default function Navbar() {
             </form>
             {/* Suggestions rapides */}
             <div className="mt-4 flex flex-wrap gap-2">
-              {['Ouagadougou', 'FESPACO', 'Marché', 'Architecture', 'Nature', 'Bobo-Dioulasso'].map(
-                (tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => {
-                      router.push(`/?q=${tag}`)
-                      setSearchOpen(false)
-                    }}
-                    className="badge badge-gray hover:badge-gold cursor-pointer transition-all"
-                  >
-                    {tag}
-                  </button>
-                )
-              )}
+              {quickSearches.map((tag: string) => (
+                <button
+                  key={tag}
+                  onClick={() => {
+                    router.push(`/?q=${tag}`)
+                    setSearchOpen(false)
+                  }}
+                  className="badge badge-gray hover:badge-gold cursor-pointer transition-all"
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
           </div>
         </div>

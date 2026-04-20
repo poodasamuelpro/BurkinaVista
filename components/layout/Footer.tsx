@@ -1,11 +1,12 @@
 'use client'
 /**
- * components/layout/Footer.tsx — Footer avec formulaire newsletter
+ * components/layout/Footer.tsx — Footer bilingue avec email contact
  */
 import { useState } from 'react'
 import Link from 'next/link'
-import { Send, Loader2 } from 'lucide-react'
+import { Send, Loader2, Mail } from 'lucide-react'
 import FasoLogo from '@/components/ui/FasoLogo'
+import { useTranslations } from 'next-intl'
 
 function FacebookIcon({ size = 16 }: { size?: number }) {
   return (
@@ -41,11 +42,11 @@ export default function Footer() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [success, setSuccess] = useState(false)
+  const t = useTranslations('footer')
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim()) return
-
     setLoading(true)
     setMessage('')
     try {
@@ -57,16 +58,16 @@ export default function Footer() {
       const data = await res.json()
       if (res.ok) {
         setSuccess(true)
-        setMessage(data.message || 'Abonnement confirmé !')
+        setMessage(data.message || t('newsletter_success'))
         setEmail('')
         setNom('')
       } else {
         setSuccess(false)
-        setMessage(data.error || 'Erreur lors de l\'abonnement')
+        setMessage(data.error || t('newsletter_error'))
       }
     } catch {
       setSuccess(false)
-      setMessage('Erreur réseau — réessayez plus tard')
+      setMessage(t('newsletter_network_error'))
     }
     setLoading(false)
   }
@@ -78,18 +79,19 @@ export default function Footer() {
   ]
 
   const exploreLinks = [
-    { label: 'Photos', href: '/?type=photo' },
-    { label: 'Vidéos', href: '/?type=video' },
-    { label: 'Catégories', href: '/categories' },
-    { label: 'Contribuer', href: '/upload' },
-    { label: 'Guide du contributeur', href: '/guide' },
+    { label: t('photos'), href: '/?type=photo' },
+    { label: t('videos'), href: '/?type=video' },
+    { label: t('categories'), href: '/categories' },
+    { label: t('contribute_link'), href: '/upload' },
+    { label: t('guide_link'), href: '/guide' },
   ]
 
   const infoLinks = [
-    { label: 'À propos', href: '/about' },
-    { label: 'Licences CC', href: '/licences' },
-    { label: 'CGU', href: '/cgu' },
-    { label: 'Politique de confidentialité', href: '/confidentialite' },
+    { label: t('about'), href: '/about' },
+    { label: t('licences'), href: '/licences' },
+    { label: t('cgu'), href: '/cgu' },
+    { label: t('privacy'), href: '/confidentialite' },
+    { label: t('contact'), href: '/contact' },
   ]
 
   return (
@@ -99,15 +101,21 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="md:col-span-2 lg:col-span-1">
-            {/* Logo cliquable → accueil */}
             <Link href="/" className="flex items-center gap-3 mb-4 hover:opacity-80 transition-opacity">
               <FasoLogo size={36} showName={true} />
             </Link>
             <p className="text-white/50 text-sm leading-relaxed max-w-xs mt-4">
-              La bibliothèque visuelle libre du Burkina Faso. Des images authentiques,
-              par des Burkinabè, pour le monde entier.
+              {t('tagline')}
             </p>
-            <div className="faso-divider w-24 mt-6" />
+            {/* Email de contact */}
+            <a
+              href="mailto:BurkinaVista@gmail.com"
+              className="inline-flex items-center gap-2 mt-4 text-sm text-faso-gold hover:text-faso-gold/80 transition-colors"
+            >
+              <Mail size={14} />
+              {t('email_contact')}
+            </a>
+            <div className="faso-divider w-24 mt-5" />
             {/* Réseaux sociaux */}
             <div className="flex gap-3 mt-5">
               {socialLinks.map(({ Icon, href, label }) => (
@@ -127,7 +135,7 @@ export default function Footer() {
 
           {/* Explorer */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Explorer</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">{t('explore')}</h3>
             <ul className="space-y-3">
               {exploreLinks.map((link) => (
                 <li key={link.href}>
@@ -144,7 +152,7 @@ export default function Footer() {
 
           {/* Informations */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Informations</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">{t('info')}</h3>
             <ul className="space-y-3">
               {infoLinks.map((link) => (
                 <li key={link.href}>
@@ -161,9 +169,9 @@ export default function Footer() {
 
           {/* Newsletter */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-2">Newsletter</h3>
+            <h3 className="text-sm font-semibold text-white mb-2">{t('newsletter_title')}</h3>
             <p className="text-xs text-white/40 mb-4 leading-relaxed">
-              Recevez les nouvelles photos et vidéos du Burkina Faso chaque semaine.
+              {t('newsletter_desc')}
             </p>
 
             {success ? (
@@ -176,7 +184,7 @@ export default function Footer() {
                   type="text"
                   value={nom}
                   onChange={(e) => setNom(e.target.value)}
-                  placeholder="Votre prénom (optionnel)"
+                  placeholder={t('newsletter_name')}
                   className="input-field text-sm py-2.5"
                   disabled={loading}
                 />
@@ -184,7 +192,7 @@ export default function Footer() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="votre@email.com"
+                  placeholder={t('newsletter_email')}
                   className="input-field text-sm py-2.5"
                   required
                   disabled={loading}
@@ -202,18 +210,24 @@ export default function Footer() {
                   ) : (
                     <Send size={15} />
                   )}
-                  {loading ? 'Abonnement...' : 'S\'abonner'}
+                  {loading ? t('newsletter_subscribing') : t('newsletter_subscribe')}
                 </button>
               </form>
             )}
           </div>
         </div>
 
-        {/* Copyright centré */}
+        {/* Copyright */}
         <div className="border-t border-white/5 mt-12 pt-8 flex flex-col items-center gap-2 text-center">
           <p className="text-xs text-white/20">
-            © {new Date().getFullYear()} BurkinaVista — Tous droits réservés
+            © {new Date().getFullYear()} BurkinaVista — {t('copyright')}
           </p>
+          <a
+            href="mailto:BurkinaVista@gmail.com"
+            className="text-xs text-faso-gold/50 hover:text-faso-gold transition-colors"
+          >
+            {t('email_contact')}
+          </a>
           <p className="text-xs text-white/20">
             🇧🇫 <span className="text-faso-red">Burkina</span>
             <span className="text-white/20"> · </span>

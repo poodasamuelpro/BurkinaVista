@@ -1,8 +1,12 @@
 'use client'
+/**
+ * components/photos/HeroSection.tsx — Hero avec traductions FR/EN + animations améliorées
+ */
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Upload, ArrowDown } from 'lucide-react'
 import type { Media } from '@/types'
+import { useTranslations } from 'next-intl'
 
 interface HeroSectionProps {
   featuredMedias: Media[]
@@ -11,6 +15,7 @@ interface HeroSectionProps {
 export default function HeroSection({ featuredMedias }: HeroSectionProps) {
   const [currentBg, setCurrentBg] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const t = useTranslations('hero')
 
   useEffect(() => {
     setLoaded(true)
@@ -44,10 +49,7 @@ export default function HeroSection({ featuredMedias }: HeroSectionProps) {
 
         {featuredMedias.length === 0 && (
           <div
-            style={{
-              background: 'linear-gradient(135deg, #0A0A0A 0%, #1A1A2E 40%, #0A0A0A 100%)',
-            }}
-            className="absolute inset-0"
+            className="absolute inset-0 hero-gradient-bg"
           />
         )}
 
@@ -56,12 +58,17 @@ export default function HeroSection({ featuredMedias }: HeroSectionProps) {
         <div className="absolute inset-0 bg-hero-pattern opacity-30" />
       </div>
 
-      {/* Floating decorative elements */}
+      {/* Floating decorative elements — couleurs drapeau BF */}
       <div className="absolute top-1/4 left-8 w-2 h-24 rounded-full bg-faso-red/30 animate-float" />
       <div className="absolute top-1/3 right-12 w-2 h-16 rounded-full bg-faso-gold/30 animate-float" style={{ animationDelay: '2s' }} />
       <div className="absolute bottom-1/3 left-16 w-2 h-20 rounded-full bg-faso-green/30 animate-float" style={{ animationDelay: '4s' }} />
       <div className="absolute top-32 right-1/4 w-8 h-8 faso-star bg-faso-gold/10 animate-spin-slow" />
       <div className="absolute bottom-40 left-1/4 w-5 h-5 faso-star bg-faso-red/15 animate-spin-slow" style={{ animationDelay: '3s' }} />
+
+      {/* Particules colorées */}
+      <div className="absolute top-20 left-1/3 w-3 h-3 rounded-full bg-faso-gold/20 animate-float" style={{ animationDelay: '1s' }} />
+      <div className="absolute bottom-1/4 right-1/3 w-2 h-2 rounded-full bg-faso-red/20 animate-float" style={{ animationDelay: '1.5s' }} />
+      <div className="absolute top-2/3 left-1/2 w-4 h-4 rounded-full bg-faso-green/15 animate-float" style={{ animationDelay: '0.5s' }} />
 
       {/* Content */}
       <div
@@ -71,27 +78,26 @@ export default function HeroSection({ featuredMedias }: HeroSectionProps) {
       >
         <div className="inline-flex items-center gap-2 badge badge-gold mb-8 animate-pulse-gold">
           <span className="w-2 h-2 rounded-full bg-faso-gold animate-pulse" />
-          🇧🇫 Bibliothèque Visuelle du Burkina Faso
+          {t('badge')}
         </div>
 
         <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold text-white mb-6 leading-none">
-          Le Burkina
+          {t('title_1')}
           <br />
-          <span className="text-gradient-faso">tel qu'il est</span>
+          <span className="text-gradient-faso">{t('title_2')}</span>
         </h1>
 
         <p className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto mb-12 leading-relaxed">
-          Des milliers de photos et vidéos authentiques du Burkina Faso,
-          libres de droits, par des Burkinabè pour le monde entier.
+          {t('subtitle')}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-          <Link href="/?scroll=grid" className="btn-primary text-base px-8 py-4">
-            Explorer les médias
+          <Link href="/?scroll=grid" className="btn-primary text-base px-8 py-4 animate-glow-red">
+            {t('cta_explore')}
           </Link>
           <Link href="/upload" className="btn-ghost text-base px-8 py-4">
             <Upload size={18} />
-            Contribuer
+            {t('cta_contribute')}
           </Link>
         </div>
 
@@ -116,13 +122,12 @@ export default function HeroSection({ featuredMedias }: HeroSectionProps) {
         <ArrowDown size={24} className="text-white/30" />
       </div>
 
-      {/* Attribution photo courante — corrigé avec les vrais champs du type Media */}
       {bgMedia && (
         <div className="absolute bottom-8 right-8 text-xs text-white/30">
           📷{' '}
           {bgMedia.contributeur_nom
             ? `${bgMedia.contributeur_prenom ?? ''} ${bgMedia.contributeur_nom}`.trim()
-            : 'FasoStock'}
+            : 'BurkinaVista'}
         </div>
       )}
     </section>
