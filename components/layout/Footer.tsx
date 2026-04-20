@@ -83,6 +83,7 @@ export default function Footer() {
     { label: 'Vidéos', href: '/?type=video' },
     { label: 'Catégories', href: '/categories' },
     { label: 'Contribuer', href: '/upload' },
+    { label: 'Guide du contributeur', href: '/guide' },
   ]
 
   const infoLinks = [
@@ -94,38 +95,38 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-white/5 bg-faso-dusk/50 mt-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
 
-        {/* Logo + description centrés */}
-        <div className="flex flex-col items-center text-center mb-14">
-          <FasoLogo size={40} showName={true} />
-          <p className="text-white/50 text-sm leading-relaxed max-w-sm mt-4">
-            La bibliothèque visuelle libre du Burkina Faso. Des images authentiques,
-            par des Burkinabè, pour le monde entier.
-          </p>
-          <div className="faso-divider w-24 mt-6" />
-          {/* Réseaux sociaux */}
-          <div className="flex gap-3 mt-5">
-            {socialLinks.map(({ Icon, href, label }) => (
-              <a
-                key={label}
-                href={href}
-                aria-label={label}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center text-white/40 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
-              >
-                <Icon size={16} />
-              </a>
-            ))}
+          {/* Brand */}
+          <div className="md:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-3 mb-4">
+              <FasoLogo size={36} showName={true} />
+            </div>
+            <p className="text-white/50 text-sm leading-relaxed max-w-xs mt-4">
+              La bibliothèque visuelle libre du Burkina Faso. Des images authentiques,
+              par des Burkinabè, pour le monde entier.
+            </p>
+            <div className="faso-divider w-24 mt-6" />
+            {/* Réseaux sociaux */}
+            <div className="flex gap-3 mt-5">
+              {socialLinks.map(({ Icon, href, label }) => (
+                <a
+                  key={label}
+                  href={href}
+                  aria-label={label}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-xl border border-white/10 flex items-center justify-center text-white/40 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
+                >
+                  <Icon size={16} />
+                </a>
+              ))}
+            </div>
           </div>
-        </div>
-
-        {/* Colonnes liens + newsletter */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-12">
 
           {/* Explorer */}
-          <div className="text-center sm:text-left">
+          <div>
             <h3 className="text-sm font-semibold text-white mb-4">Explorer</h3>
             <ul className="space-y-3">
               {exploreLinks.map((link) => (
@@ -142,7 +143,7 @@ export default function Footer() {
           </div>
 
           {/* Informations */}
-          <div className="text-center sm:text-left">
+          <div>
             <h3 className="text-sm font-semibold text-white mb-4">Informations</h3>
             <ul className="space-y-3">
               {infoLinks.map((link) => (
@@ -159,7 +160,7 @@ export default function Footer() {
           </div>
 
           {/* Newsletter */}
-          <div className="text-center sm:text-left">
+          <div>
             <h3 className="text-sm font-semibold text-white mb-2">Newsletter</h3>
             <p className="text-xs text-white/40 mb-4 leading-relaxed">
               Recevez les nouvelles photos et vidéos du Burkina Faso chaque semaine.
