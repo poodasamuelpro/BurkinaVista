@@ -7,8 +7,13 @@ import { neon, neonConfig } from '@neondatabase/serverless'
 // Configuration optimale pour les environnements serverless
 neonConfig.fetchConnectionCache = true
 
+// Vérification explicite pour éviter un crash silencieux au build
+if (!process.env.DATABASE_URL) {
+  throw new Error('[db] DATABASE_URL is not defined. Vérifie tes variables d\'environnement sur Vercel.')
+}
+
 // Instance SQL réutilisable (singleton)
-const sql = neon(process.env.DATABASE_URL!)
+const sql = neon(process.env.DATABASE_URL)
 
 /**
  * Exécute une requête SQL et retourne toutes les lignes
@@ -63,7 +68,6 @@ export async function execute(
 ): Promise<number> {
   try {
     const result = await sql(queryText, params)
-    // Neon retourne un tableau ; pour les mutations, on retourne la longueur
     return Array.isArray(result) ? result.length : 0
   } catch (error) {
     console.error('Erreur DB execute:', error)
