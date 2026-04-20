@@ -217,6 +217,20 @@
     "files_selected_plural": "fichiers sélectionnés",
     "info_note": "Les champs titre, description et tags sont optionnels. Notre équipe s'assure de la qualité de chaque média avant publication."
   },
+  "categories_bar": {
+    "all": "Tout",
+    "photos": "Photos",
+    "videos": "Vidéos",
+    "all_categories": "Toutes"
+  },
+  "photogrid": {
+    "no_media_title": "Aucun média trouvé",
+    "no_media_desc": "Soyez le premier à contribuer dans cette catégorie",
+    "contribute_now": "Contribuer maintenant",
+    "media_count": "média",
+    "medias_count": "médias",
+    "page": "Page"
+  },
   "categories": {
     "seo_title": "Catégories — BurkinaVista",
     "seo_desc": "Explorez les photos et vidéos du Burkina Faso par catégorie.",
