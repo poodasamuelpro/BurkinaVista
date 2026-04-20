@@ -69,15 +69,15 @@ export default function Navbar() {
             : 'bg-transparent'
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 md:h-20">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16 md:h-20">
 
             {/* Logo */}
-            <Link href="/" className="flex items-center group">
+            <Link href="/" className="flex items-center group flex-shrink-0">
               <FasoLogo
-                size={36}
+                size={30}
                 showName={true}
-                className="group-hover:opacity-90 transition-opacity"
+                className="group-hover:opacity-90 transition-opacity sm:scale-110 md:scale-125 origin-left"
               />
             </Link>
 
@@ -109,26 +109,26 @@ export default function Navbar() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               {/* Recherche */}
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label="Rechercher"
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
               >
-                <Search size={18} />
+                <Search size={17} />
               </button>
 
               {/* Toggle thème */}
               <button
                 onClick={toggleTheme}
                 aria-label={isLight ? 'Mode sombre' : 'Mode clair'}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
               >
-                {isLight ? <Moon size={18} /> : <Sun size={18} />}
+                {isLight ? <Moon size={17} /> : <Sun size={17} />}
               </button>
 
-              {/* Switch langue */}
+              {/* Switch langue — desktop uniquement */}
               <button
                 onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
                 aria-label="Changer la langue"
@@ -150,7 +150,7 @@ export default function Navbar() {
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 aria-label="Menu"
-                className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5"
+                className="md:hidden w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5"
               >
                 {menuOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
@@ -161,7 +161,7 @@ export default function Navbar() {
         {/* Menu mobile */}
         {menuOpen && (
           <div className="md:hidden bg-faso-dusk border-t border-white/5 animate-slide-down">
-            <div className="px-4 py-4 flex flex-col gap-1">
+            <div className="px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-1">
 
               {/* Liens principaux */}
               {navLinks.map((link) => (
@@ -169,7 +169,7 @@ export default function Navbar() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setMenuOpen(false)}
-                  className={`px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  className={`px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium transition-colors ${
                     pathname === link.href
                       ? 'text-faso-gold bg-faso-gold/10'
                       : 'text-white/70 hover:text-white hover:bg-white/5'
@@ -179,7 +179,7 @@ export default function Navbar() {
                 </Link>
               ))}
 
-              <div className="faso-divider my-2" />
+              <div className="faso-divider my-1.5 sm:my-2" />
 
               {/* Liens secondaires */}
               {mobileSecondaryLinks.map(({ href, label, Icon }) => (
@@ -187,7 +187,7 @@ export default function Navbar() {
                   key={href}
                   href={href}
                   onClick={() => setMenuOpen(false)}
-                  className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
+                  className={`px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium flex items-center gap-3 transition-colors ${
                     pathname === href
                       ? 'text-faso-gold bg-faso-gold/10'
                       : 'text-white/50 hover:text-white hover:bg-white/5'
@@ -198,10 +198,10 @@ export default function Navbar() {
                 </Link>
               ))}
 
-              <div className="faso-divider my-2" />
+              <div className="faso-divider my-1.5 sm:my-2" />
 
               {/* Switch langue + thème mobile */}
-              <div className="flex gap-2 px-4 py-2">
+              <div className="flex gap-2 px-2 sm:px-4 py-2">
                 <button
                   onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
                   className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-bold text-white/60 hover:text-faso-gold hover:border-faso-gold/30 transition-all"
@@ -221,7 +221,7 @@ export default function Navbar() {
               <Link
                 href="/upload"
                 onClick={() => setMenuOpen(false)}
-                className="btn-gold justify-center py-3 mt-1"
+                className="btn-gold justify-center py-2.5 sm:py-3 mt-1"
               >
                 <Upload size={16} /> {t('contribute')}
               </Link>
@@ -233,14 +233,14 @@ export default function Navbar() {
       {/* Modal de recherche */}
       {searchOpen && (
         <div
-          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-start justify-center pt-24 px-4"
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-start justify-center pt-16 sm:pt-20 md:pt-24 px-3 sm:px-4"
           onClick={(e) => e.target === e.currentTarget && setSearchOpen(false)}
         >
           <div className="w-full max-w-2xl animate-scale-in">
             <form onSubmit={handleSearch} className="relative">
               <Search
-                className="absolute left-5 top-1/2 -translate-y-1/2 text-white/40"
-                size={20}
+                className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-white/40"
+                size={18}
               />
               <input
                 autoFocus
@@ -248,18 +248,19 @@ export default function Navbar() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('search_placeholder')}
-                className="w-full pl-14 pr-12 py-5 rounded-2xl text-lg input-field border-faso-gold/30"
+                className="w-full pl-12 sm:pl-14 pr-10 sm:pr-12 py-3.5 sm:py-5 rounded-2xl text-base sm:text-lg input-field border-faso-gold/30"
               />
               <button
                 type="button"
                 onClick={() => setSearchOpen(false)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+                className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
               >
                 <X size={20} />
               </button>
             </form>
-            {/* Suggestions rapides */}
-            <div className="mt-4 flex flex-wrap gap-2">
+
+            {/* Suggestions rapides — scroll horizontal sur mobile */}
+            <div className="mt-3 sm:mt-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-x-visible scrollbar-hide">
               {quickSearches.map((tag: string) => (
                 <button
                   key={tag}
@@ -267,7 +268,7 @@ export default function Navbar() {
                     router.push(`/?q=${tag}`)
                     setSearchOpen(false)
                   }}
-                  className="badge badge-gray hover:badge-gold cursor-pointer transition-all"
+                  className="badge badge-gray hover:badge-gold cursor-pointer transition-all whitespace-nowrap flex-shrink-0 sm:flex-shrink"
                 >
                   {tag}
                 </button>
