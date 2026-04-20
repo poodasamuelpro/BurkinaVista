@@ -9,6 +9,7 @@ import { Toaster } from 'react-hot-toast'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import Providers from '@/components/layout/Providers'
+import FloatingLangSwitcher from '@/components/ui/FloatingLangSwitcher'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
 
@@ -82,6 +83,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Navbar />
             <main className="min-h-screen">{children}</main>
             <Footer />
+            <FloatingLangSwitcher />
             <Toaster
               position="bottom-right"
               toastOptions={{
