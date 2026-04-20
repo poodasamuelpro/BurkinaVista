@@ -1,15 +1,15 @@
 import { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.com'
   return {
     rules: [
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/admin', '/api/', '/auth/'],
+        disallow: ['/admin/', '/api/'],
       },
     ],
-    sitemap: `${baseUrl}/sitemap.xml`,
+    sitemap: 'https://burkina-vista.vercel.app/sitemap.xml',
+    host: 'https://burkina-vista.vercel.app',
   }
 }

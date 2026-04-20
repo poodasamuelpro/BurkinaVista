@@ -1,129 +1,117 @@
-# 🇧🇫 FasoStock — Bibliothèque Visuelle du Burkina Faso
+# BurkinaVista — Bibliothèque Visuelle du Burkina Faso
 
-Plateforme open de photos et vidéos libres de droits du Burkina Faso,
-avec génération SEO automatique par IA.
+## 🌍 URLs
+- **Production**: https://burkina-vista.vercel.app
+- **Email contact**: BurkinaVista@gmail.com
 
----
+## ✅ Fonctionnalités implémentées
 
-## Stack Technique
+### Bilingue FR/EN (next-intl)
+- Détection automatique de la langue du navigateur (Accept-Language)
+- Bouton de switch FR ↔ EN dans la Navbar (desktop + mobile)
+- Cookie `NEXT_LOCALE` persistant la préférence utilisateur
+- Toutes les pages traduites : accueil, à propos, guide, contact, licences, CGU, confidentialité
 
-- **Frontend** : Next.js 14 + TypeScript + Tailwind CSS + Framer Motion
-- **Base de données** : Supabase (PostgreSQL)
-- **Auth** : Supabase Auth
-- **Stockage images** : Cloudinary
-- **Stockage vidéos** : Cloudflare Stream
-- **IA SEO** : Google Vision API + Claude (Anthropic)
-- **Hébergement** : Vercel
+### Thème Clair/Sombre (Dark/Light Mode)
+- Toggle dans la Navbar (icône ☀️/🌙)
+- Thème persisté dans `localStorage` (clé `bv-theme`)
+- Variables CSS `data-theme="dark"` / `data-theme="light"`
+- Compatible avec tous les composants existants
+- Fond sombre → brun terreux africain (dark) / crème chaleureux (light)
 
----
+### Page Contact (`/contact`)
+- Formulaire complet : prénom, nom, email, sujet, type de demande, message
+- Types : Plainte, Recommandation, Conseil, Litige, Signalement, Question générale, Autre
+- Email envoyé à BurkinaVista@gmail.com via Resend
+- Email de confirmation automatique à l'expéditeur
+- Traduction complète FR/EN
 
-## Installation
+### Email BurkinaVista@gmail.com
+- Affiché dans le Footer (lien mailto)
+- Affiché dans la page Contact
+- Affiché dans les pages CGU, Confidentialité, Licences, À propos
 
-```bash
-# 1. Cloner et installer
-npm install
+### Animations enrichies
+- `animate-fade-in-up` : entrée depuis le bas
+- `animate-bounce-in` : rebond d'entrée
+- `animate-gradient` : dégradé animé
+- `animate-glow-red/green` : lueur colorée
+- `animate-slide-left/right` : glissement latéral
+- Classe `.page-enter` : transition sur chaque page
+- Particules décoratives dans le Hero
 
-# 2. Copier les variables d'environnement
-cp .env.local.example .env.local
-# Remplir toutes les valeurs dans .env.local
+### SEO bilingue
+- Metadata dynamique FR/EN sur toutes les pages
+- alternates canonical + hreflang
+- sitemap.xml mis à jour avec `/contact`
+- robots.ts propre
+- OpenGraph + Twitter Cards
 
-# 3. Lancer en développement
-npm run dev
+## 🗂️ Structure des fichiers modifiés/créés
+
+### Nouveaux fichiers
+| Fichier | Description |
+|---------|-------------|
+| `messages/fr.json` | Toutes les traductions françaises |
+| `messages/en.json` | Toutes les traductions anglaises |
+| `i18n.ts` | Configuration next-intl |
+| `context/ThemeContext.tsx` | Provider thème dark/light |
+| `context/LocaleContext.tsx` | Provider langue FR/EN |
+| `components/layout/Providers.tsx` | Wrapper client ThemeProvider + LocaleProvider |
+| `app/contact/page.tsx` | Page contact (Server Component + SEO) |
+| `app/contact/ContactClient.tsx` | Formulaire de contact (Client Component) |
+| `app/api/contact/route.ts` | API route envoi email contact |
+
+### Fichiers modifiés
+| Fichier | Changements |
+|---------|-------------|
+| `app/layout.tsx` | next-intl, ThemeProvider, LocaleProvider |
+| `app/globals.css` | Variables CSS dark/light, nouvelles animations |
+| `tailwind.config.ts` | darkMode, nouvelles animations keyframes |
+| `next.config.js` | withNextIntl plugin |
+| `middleware.ts` | Admin JWT (inchangé fonctionnellement) |
+| `components/layout/Navbar.tsx` | Boutons langue + thème, traductions |
+| `components/layout/Footer.tsx` | Email contact, traductions |
+| `components/photos/HeroSection.tsx` | Traductions + animations améliorées |
+| `app/about/page.tsx` | SEO bilingue, traductions, animations |
+| `app/guide/page.tsx` | SEO bilingue, traductions, animations |
+| `app/confidentialite/page.tsx` | SEO bilingue, email contact, traductions |
+| `app/cgu/page.tsx` | SEO bilingue, email contact, traductions |
+| `app/licences/page.tsx` | SEO bilingue, email contact, traductions |
+| `app/robots.ts` | Mis à jour |
+| `app/sitemap.ts` | Ajout /contact, format amélioré |
+
+## 🔧 Stack technique
+- **Framework**: Next.js 14 (App Router)
+- **Styles**: TailwindCSS + CSS Variables (dark/light)
+- **i18n**: next-intl (detection navigateur + cookie)
+- **Database**: Neon (PostgreSQL serverless)
+- **Storage**: Cloudinary (photos) + Cloudflare Stream (vidéos)
+- **Email**: Resend
+- **AI**: Google Gemini (SEO auto)
+- **Déploiement**: Vercel
+
+## 🌱 Variables d'environnement requises
+```env
+DATABASE_URL=postgresql://...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_STREAM_TOKEN=...
+RESEND_API_KEY=...
+RESEND_FROM_EMAIL=noreply@burkinavista.com
+ADMIN_EMAIL=BurkinaVista@gmail.com
+ADMIN_PASSWORD_HASH=...
+JWT_SECRET=...
+GEMINI_API_KEY=...
+NEXT_PUBLIC_APP_URL=https://burkina-vista.vercel.app
+CRON_SECRET=...
 ```
 
----
-
-## Configuration Supabase
-
-1. Créer un projet sur [supabase.com](https://supabase.com)
-2. Aller dans **SQL Editor**
-3. Exécuter dans cet ordre :
-   - `supabase-migration.sql`
-   - `supabase-rpc.sql`
-4. Dans **Authentication > Providers**, activer Google OAuth si souhaité
-
----
-
-## Variables d'environnement
-
-Voir `.env.local.example` — toutes les clés à remplir :
-
-| Variable | Service | Où trouver |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase | Project Settings > API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase | Project Settings > API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase | Project Settings > API |
-| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Cloudinary | Dashboard |
-| `CLOUDINARY_API_KEY` | Cloudinary | Dashboard > API Keys |
-| `CLOUDINARY_API_SECRET` | Cloudinary | Dashboard > API Keys |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare | Dashboard |
-| `CLOUDFLARE_STREAM_API_TOKEN` | Cloudflare | API Tokens |
-| `GOOGLE_VISION_API_KEY` | Google Cloud | APIs & Services |
-| `ANTHROPIC_API_KEY` | Anthropic | console.anthropic.com |
-| `NEXT_PUBLIC_APP_URL` | — | Ton domaine |
-
----
-
-## Déploiement Vercel
-
-```bash
-# Via CLI
-npx vercel
-
-# Ou connecter le repo GitHub sur vercel.com
-# Ajouter toutes les variables d'environnement dans Vercel Dashboard
-```
-
----
-
-## Rendre un utilisateur admin
-
-Dans Supabase SQL Editor :
-```sql
-UPDATE profiles SET role = 'admin' WHERE email = 'ton@email.com';
-```
-
----
-
-## Structure des pages
-
-| URL | Description |
-|---|---|
-| `/` | Accueil — galerie masonry + hero |
-| `/photos/[slug]` | Page détail média (SEO optimisé) |
-| `/upload` | Formulaire upload + IA |
-| `/categories` | Liste des catégories |
-| `/categories/[slug]` | Photos par catégorie |
-| `/profil/[id]` | Profil contributeur |
-| `/auth/login` | Connexion |
-| `/auth/register` | Inscription |
-| `/admin` | Dashboard admin (réservé) |
-| `/admin/photos` | Modération médias |
-| `/admin/users` | Gestion utilisateurs |
-| `/admin/categories` | Gestion catégories |
-| `/sitemap.xml` | Sitemap dynamique auto |
-
----
-
-## Fonctionnalités IA
-
-À chaque upload :
-1. **Google Vision** analyse l'image (labels, objets, couleurs, texte)
-2. **Claude (Anthropic)** génère titre SEO, description, alt text, tags
-3. L'IA améliore ce que l'utilisateur a écrit sans inventer
-4. Slug URL unique généré automatiquement
-5. Google pingé automatiquement après publication
-
----
-
-## Couleurs du projet (drapeau BF)
-
-```css
---faso-red:   #EF2B2D  /* Rouge */
---faso-green: #009A00  /* Vert */
---faso-gold:  #EFC031  /* Étoile dorée */
-```
-
----
-
-Fait avec ❤️ pour le Burkina Faso 🇧🇫
+## 📦 Compatibilité
+- ✅ Vercel (Edge Runtime compatible)
+- ✅ Neon DB (@neondatabase/serverless)
+- ✅ Next.js 14 App Router
+- ✅ TypeScript strict
+- ✅ Tailwind CSS v3

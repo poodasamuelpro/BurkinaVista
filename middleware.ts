@@ -1,7 +1,5 @@
 /**
- * middleware.ts — Authentification admin simplifiée avec JWT
- * Vérifie uniquement le cookie JWT admin sur /admin/*
- * Pas de Supabase Auth — cookie httpOnly sécurisé
+ * middleware.ts — Auth admin JWT + i18n locale cookie
  */
 import { NextResponse, type NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
@@ -27,17 +25,14 @@ export async function middleware(request: NextRequest) {
       if (payload.role !== 'admin') {
         return NextResponse.redirect(new URL('/admin/login', request.url))
       }
-      // Token valide — continuer
       return NextResponse.next()
     } catch {
-      // Token invalide ou expiré — rediriger vers login
       const response = NextResponse.redirect(new URL('/admin/login', request.url))
       response.cookies.delete('admin_token')
       return response
     }
   }
 
-  // Toutes les autres routes sont publiques
   return NextResponse.next()
 }
 
