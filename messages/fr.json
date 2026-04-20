@@ -205,6 +205,10 @@
     "tags": "Tags",
     "tags_hint": "(séparés par des virgules)",
     "licence": "Licence Creative Commons",
+    "licence_desc_CC_BY": "Libre avec attribution (recommandé)",
+    "licence_desc_CC0": "Domaine public total",
+    "licence_desc_CC_BY_NC": "Libre, pas d'usage commercial",
+    "licence_desc_CC_BY_SA": "Libre, partage identique",
     "submit": "Envoyer pour publication",
     "uploading": "Upload en cours",
     "processing": "Traitement en cours...",
@@ -215,7 +219,13 @@
     "team_review": "Vos médias sont vérifiés par notre équipe avant publication (24-48h)",
     "files_selected": "fichier sélectionné",
     "files_selected_plural": "fichiers sélectionnés",
-    "info_note": "Les champs titre, description et tags sont optionnels. Notre équipe s'assure de la qualité de chaque média avant publication."
+    "info_note": "Les champs titre, description et tags sont optionnels. Notre équipe s'assure de la qualité de chaque média avant publication.",
+    "error_no_file": "Veuillez sélectionner au moins un fichier",
+    "error_no_category": "Veuillez choisir une catégorie",
+    "error_name_required": "Prénom et nom sont requis",
+    "error_email_required": "Email requis",
+    "error_unknown": "Erreur inconnue",
+    "error_network": "Erreur réseau pour"
   },
   "categories_bar": {
     "all": "Tout",
@@ -237,7 +247,8 @@
     "title": "Explorer par catégorie",
     "subtitle": "Plongez dans les différentes facettes du Burkina Faso",
     "medias": "médias",
-    "no_categories": "Aucune catégorie disponible pour le moment."
+    "no_categories": "Aucune catégorie disponible pour le moment.",
+    "explore_link": "Explorer"
   },
   "theme": {
     "toggle_dark": "Mode sombre",
