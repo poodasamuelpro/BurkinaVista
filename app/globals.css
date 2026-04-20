@@ -41,30 +41,33 @@
 
 /* =====================
    VARIABLES — LIGHT MODE
+   Fond bleu-blanc laiteux aéré (#F0F5FF)
+   Compatible avec rouge/or/vert du drapeau
 ===================== */
 [data-theme="light"] {
-  /* Fond principal : bleu-blanc laiteux très doux — aéré, propre, s'accorde avec rouge/or/vert */
-  --faso-night: #EEF3FA;
-  /* Fond secondaire : bleu-gris légèrement plus dense */
-  --faso-dusk: #E2EAF4;
+  /* Fond principal : bleu-blanc ultra-doux — blanc légèrement teinté de ciel */
+  --faso-night: #F0F5FF;
+  /* Fond secondaire : bleu perle légèrement plus dense */
+  --faso-dusk: #E4EDFA;
   /* Fond des cartes : blanc pur pour un effet de profondeur */
   --faso-card: #FFFFFF;
 
-  --text-primary: #1C2A3A;
-  --text-secondary: rgba(28,42,58,0.65);
-  --text-muted: rgba(28,42,58,0.4);
+  /* Texte principal : bleu-marine foncé (lisible + moderne) */
+  --text-primary: #1A2D4A;
+  --text-secondary: rgba(26,45,74,0.65);
+  --text-muted: rgba(26,45,74,0.4);
 
-  --border-subtle: rgba(28,42,58,0.07);
-  --border-medium: rgba(28,42,58,0.13);
+  --border-subtle: rgba(26,45,74,0.07);
+  --border-medium: rgba(26,45,74,0.13);
 
-  --input-bg: rgba(28,42,58,0.04);
-  --input-border: rgba(28,42,58,0.13);
-  --input-focus-bg: rgba(239,192,49,0.08);
+  --input-bg: rgba(255,255,255,0.85);
+  --input-border: rgba(26,45,74,0.13);
+  --input-focus-bg: rgba(239,192,49,0.06);
 
-  --overlay-bg: rgba(0,0,0,0.55);
+  --overlay-bg: rgba(0,0,0,0.5);
 
   --toast-bg: #FFFFFF;
-  --toast-color: #1C2A3A;
+  --toast-color: #1A2D4A;
   --toast-border: rgba(239,192,49,0.4);
 }
 
@@ -176,10 +179,10 @@ p {
 }
 
 [data-theme="light"] .card {
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 [data-theme="light"] .card:hover {
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  box-shadow: 0 8px 32px rgba(26,45,74,0.10);
 }
 
 /* Badge */
@@ -204,8 +207,11 @@ p {
   color: var(--faso-gold);
   border: 1px solid rgba(239, 192, 49, 0.3);
 }
+/* En mode clair, les badges gold passent en bleu marine pour la lisibilité */
 [data-theme="light"] .badge-gold {
-  color: #b45309;
+  background: rgba(26,45,74,0.08);
+  color: #1A2D4A;
+  border: 1px solid rgba(26,45,74,0.18);
 }
 .badge-gray {
   background: var(--input-bg);
@@ -304,17 +310,20 @@ select.input-field option {
 /* =====================
    NAVBAR
 ===================== */
-[data-theme="light"] .navbar-bg {
-  background: rgba(232,237,242,0.95) !important;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+[data-theme="light"] nav.bg-faso-night\/95,
+[data-theme="light"] nav.bg-white\/95 {
+  background-color: rgba(240,245,255,0.97) !important;
+  border-bottom: 1px solid rgba(26,45,74,0.08) !important;
 }
+[data-theme="light"] nav .text-white\/60 { color: rgba(26,45,74,0.6) !important; }
+[data-theme="light"] nav .text-white     { color: #1A2D4A !important; }
 
 /* =====================
    FOOTER
 ===================== */
 [data-theme="light"] footer {
-  background: var(--faso-dusk);
-  border-top: 1px solid rgba(0,0,0,0.06);
+  background: var(--faso-dusk) !important;
+  border-top: 1px solid rgba(26,45,74,0.08) !important;
 }
 
 /* =====================
@@ -529,111 +538,137 @@ select.input-field option {
 
 /* =====================
    LIGHT MODE OVERRIDES
+   Conversion text-white/* → texte bleu-marine
 ===================== */
-/* Textes blanc → bleu-nuit ardoise */
-[data-theme="light"] .text-white\/50  { color: rgba(28,42,58,0.55) !important; }
-[data-theme="light"] .text-white\/40  { color: rgba(28,42,58,0.45) !important; }
-[data-theme="light"] .text-white\/30  { color: rgba(28,42,58,0.35) !important; }
-[data-theme="light"] .text-white\/20  { color: rgba(28,42,58,0.25) !important; }
-[data-theme="light"] .text-white\/10  { color: rgba(28,42,58,0.12) !important; }
-[data-theme="light"] .text-white\/70  { color: rgba(28,42,58,0.72) !important; }
-[data-theme="light"] .text-white\/60  { color: rgba(28,42,58,0.62) !important; }
-[data-theme="light"] .text-white      { color: #1C2A3A               !important; }
+[data-theme="light"] .text-white\/50  { color: rgba(26,45,74,0.52) !important; }
+[data-theme="light"] .text-white\/40  { color: rgba(26,45,74,0.42) !important; }
+[data-theme="light"] .text-white\/30  { color: rgba(26,45,74,0.32) !important; }
+[data-theme="light"] .text-white\/20  { color: rgba(26,45,74,0.22) !important; }
+[data-theme="light"] .text-white\/10  { color: rgba(26,45,74,0.12) !important; }
+[data-theme="light"] .text-white\/70  { color: rgba(26,45,74,0.70) !important; }
+[data-theme="light"] .text-white\/60  { color: rgba(26,45,74,0.60) !important; }
+[data-theme="light"] .text-white\/80  { color: rgba(26,45,74,0.80) !important; }
+[data-theme="light"] .text-white      { color: #1A2D4A !important; }
 
-/* Fonds */
-[data-theme="light"] .bg-faso-night   { background-color: #EEF3FA !important; }
-[data-theme="light"] .bg-faso-dusk    { background-color: #E2EAF4 !important; }
+/* Fonds principaux */
+[data-theme="light"] .bg-faso-night   { background-color: #F0F5FF !important; }
+[data-theme="light"] .bg-faso-dusk    { background-color: #E4EDFA !important; }
 [data-theme="light"] .bg-faso-card,
-[data-theme="light"] .bg-white\/3     { background-color: rgba(255,255,255,0.9) !important; }
+[data-theme="light"] .bg-white\/3     { background-color: rgba(255,255,255,0.95) !important; }
 
-/* bg-white/5 → fond légèrement teinté bleu */
-[data-theme="light"] .bg-white\/5     { background-color: rgba(28,42,58,0.05) !important; }
-[data-theme="light"] .bg-white\/10    { background-color: rgba(28,42,58,0.08) !important; }
+/* bg-white/5, bg-white/10 → fond légèrement teinté bleu */
+[data-theme="light"] .bg-white\/5     { background-color: rgba(26,45,74,0.05) !important; }
+[data-theme="light"] .bg-white\/10    { background-color: rgba(26,45,74,0.08) !important; }
 
 /* Bordures */
-[data-theme="light"] .border-white\/5  { border-color: rgba(28,42,58,0.06)  !important; }
-[data-theme="light"] .border-white\/10 { border-color: rgba(28,42,58,0.11)  !important; }
-[data-theme="light"] .border-white\/15 { border-color: rgba(28,42,58,0.13)  !important; }
+[data-theme="light"] .border-white\/5  { border-color: rgba(26,45,74,0.06)  !important; }
+[data-theme="light"] .border-white\/10 { border-color: rgba(26,45,74,0.11)  !important; }
+[data-theme="light"] .border-white\/15 { border-color: rgba(26,45,74,0.13)  !important; }
 
-/* Overlays */
-[data-theme="light"] .bg-black\/80    { background-color: rgba(238,243,250,0.92) !important; }
-[data-theme="light"] .bg-black\/60    { background-color: rgba(238,243,250,0.75) !important; }
+/* Overlays génériques */
+[data-theme="light"] .bg-black\/80    { background-color: rgba(240,245,255,0.92) !important; }
+[data-theme="light"] .bg-black\/60    { background-color: rgba(240,245,255,0.75) !important; }
 
-/* ── Hero section light ── */
-/* Les overlays faso-night dans la hero doivent être très transparents en mode clair
-   pour ne pas masquer la photo de fond */
-[data-theme="light"] .bg-faso-night\/60 { background-color: rgba(28,42,58,0.45) !important; }
-[data-theme="light"] .bg-faso-night\/40 { background-color: rgba(28,42,58,0.25) !important; }
+/* ── Hero section light ──
+   L'overlay bg-faso-night/60 et /40 doivent laisser la photo visible
+   tout en assurant la lisibilité du texte blanc */
+[data-theme="light"] .bg-faso-night\/60 { background-color: rgba(26,45,74,0.48) !important; }
+[data-theme="light"] .bg-faso-night\/40 { background-color: rgba(26,45,74,0.28) !important; }
+[data-theme="light"] .bg-faso-night\/80 { background-color: rgba(26,45,74,0.65) !important; }
 [data-theme="light"] section.relative .bg-faso-dusk\/80 {
-  background-color: rgba(238,243,250,0.88) !important;
+  background-color: rgba(240,245,255,0.88) !important;
   backdrop-filter: blur(8px);
 }
 
 /* ── Cards en mode clair ── */
 [data-theme="light"] .card {
   background-color: #FFFFFF !important;
-  border-color: rgba(28,42,58,0.08) !important;
-  box-shadow: 0 2px 12px rgba(28,42,58,0.08), 0 1px 3px rgba(28,42,58,0.06) !important;
+  border-color: rgba(26,45,74,0.08) !important;
+  box-shadow: 0 2px 12px rgba(26,45,74,0.07), 0 1px 3px rgba(26,45,74,0.05) !important;
 }
 [data-theme="light"] .card:hover {
   border-color: rgba(239,192,49,0.3) !important;
-  box-shadow: 0 8px 32px rgba(28,42,58,0.12) !important;
+  box-shadow: 0 8px 32px rgba(26,45,74,0.10) !important;
 }
 
 /* ── CategoriesBar / filtres ── */
 [data-theme="light"] .bg-white\/5:not(nav *) {
-  background-color: rgba(28,42,58,0.06) !important;
-  color: rgba(28,42,58,0.7) !important;
+  background-color: rgba(26,45,74,0.06) !important;
+  color: rgba(26,45,74,0.7) !important;
 }
 [data-theme="light"] .hover\:bg-white\/10:hover {
-  background-color: rgba(28,42,58,0.10) !important;
+  background-color: rgba(26,45,74,0.10) !important;
 }
 
 /* ── Badges en mode clair ── */
 [data-theme="light"] .badge-gray {
-  background: rgba(28,42,58,0.07);
-  color: rgba(28,42,58,0.55);
-  border-color: rgba(28,42,58,0.12);
+  background: rgba(26,45,74,0.06);
+  color: rgba(26,45,74,0.55);
+  border-color: rgba(26,45,74,0.12);
 }
 
 /* ── Input en mode clair ── */
 [data-theme="light"] .input-field {
-  background: rgba(255,255,255,0.9) !important;
-  border-color: rgba(28,42,58,0.15) !important;
-  color: #1C2A3A !important;
+  background: rgba(255,255,255,0.92) !important;
+  border-color: rgba(26,45,74,0.15) !important;
+  color: #1A2D4A !important;
+}
+[data-theme="light"] .input-field::placeholder {
+  color: rgba(26,45,74,0.38) !important;
 }
 
 /* ── StatsBar ── */
 [data-theme="light"] .divide-white\/5 > * + * {
-  border-color: rgba(28,42,58,0.08) !important;
+  border-color: rgba(26,45,74,0.08) !important;
 }
 
 /* ── Pagination ── */
 [data-theme="light"] .bg-white\/5 {
-  background-color: rgba(28,42,58,0.06) !important;
+  background-color: rgba(26,45,74,0.06) !important;
 }
 
 /* ── Footer en mode clair ── */
 [data-theme="light"] footer {
-  background: #E2EAF4 !important;
-  border-top: 1px solid rgba(28,42,58,0.09) !important;
+  background: #E4EDFA !important;
+  border-top: 1px solid rgba(26,45,74,0.09) !important;
 }
-
-/* Navbar light */
-[data-theme="light"] nav.bg-faso-night\/95 {
-  background-color: rgba(238,243,250,0.97) !important;
-}
-/* Navbar light — bg-white/95 du Navbar remanié */
-[data-theme="light"] nav.bg-white\/95 {
-  background-color: rgba(238,243,250,0.97) !important;
-}
-[data-theme="light"] nav .text-white\/60 { color: rgba(28,42,58,0.6) !important; }
-[data-theme="light"] nav .text-white     { color: #1C2A3A             !important; }
 
 /* FloatingLangSwitcher — override fond light */
 [data-theme="light"] .floating-lang-btn {
   background-color: #FFFFFF !important;
+  color: #1A2D4A !important;
+  border-color: rgba(26,45,74,0.15) !important;
 }
 
 /* Search overlay light */
 [data-theme="light"] .backdrop-blur-sm { backdrop-filter: blur(4px); }
+
+/* ── Texte gold/jaune en mode clair → bleu marine pour lisibilité ──
+   Les éléments text-faso-gold sur fond clair sont peu lisibles.
+   On les convertit en bleu marine profond. */
+[data-theme="light"] .text-faso-gold {
+  color: #1A2D4A !important;
+}
+/* Exception : les boutons btn-gold gardent leur couleur car ils ont un fond doré */
+[data-theme="light"] .btn-gold .text-faso-gold,
+[data-theme="light"] .btn-gold {
+  color: #000 !important;
+}
+/* Les icônes gold dans les cards/badges restent reconnaissables en ambre foncé */
+[data-theme="light"] .badge-gold .text-faso-gold,
+[data-theme="light"] .text-faso-gold.badge,
+[data-theme="light"] span.text-faso-gold {
+  color: #1A2D4A !important;
+}
+/* Liens hover gold → restent gold car il y a un contexte de survol */
+[data-theme="light"] .hover\:text-faso-gold:hover {
+  color: #b45309 !important;
+}
+
+/* ── Dropzone border en mode clair ── */
+[data-theme="light"] .border-white\/10 {
+  border-color: rgba(26,45,74,0.12) !important;
+}
+[data-theme="light"] .hover\:border-white\/20:hover {
+  border-color: rgba(26,45,74,0.20) !important;
+}
