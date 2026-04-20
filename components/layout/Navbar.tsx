@@ -77,7 +77,7 @@ export default function Navbar() {
               <FasoLogo
                 size={22}
                 showName={true}
-                className="group-hover:opacity-90 transition-opacity sm:scale-125 md:scale-150 origin-left [&_span]:text-[10px] sm:[&_span]:text-xs md:[&_span]:text-sm [&_p]:text-[7px] sm:[&_p]:text-[8px]"
+                className="group-hover:opacity-90 transition-opacity sm:scale-125 md:scale-150 origin-left"
               />
             </Link>
 
@@ -117,7 +117,7 @@ export default function Navbar() {
                 aria-label="Rechercher"
                 className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-all"
               >
-                <Search size={15} className="sm:w-[18px] sm:h-[18px]" />
+                <Search size={15} />
               </button>
 
               {/* Toggle thème */}
@@ -126,13 +126,10 @@ export default function Navbar() {
                 aria-label={isLight ? 'Mode sombre' : 'Mode clair'}
                 className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white/60 hover:text-faso-gold hover:bg-white/5 transition-all"
               >
-                {isLight
-                  ? <Moon size={15} className="sm:w-[18px] sm:h-[18px]" />
-                  : <Sun size={15} className="sm:w-[18px] sm:h-[18px]" />
-                }
+                {isLight ? <Moon size={15} /> : <Sun size={15} />}
               </button>
 
-              {/* Switch langue — visible sur mobile ET desktop */}
+              {/* Switch langue — visible partout */}
               <button
                 onClick={() => switchLocale(locale === 'fr' ? 'en' : 'fr')}
                 aria-label="Changer la langue"
@@ -141,21 +138,12 @@ export default function Navbar() {
                 {locale === 'fr' ? 'EN' : 'FR'}
               </button>
 
-              {/* Bouton Contribuer — réduit sur mobile, plein sur desktop */}
+              {/* Bouton Contribuer — un seul, adapté selon la taille */}
               <Link
                 href="/upload"
-                className="hidden md:flex btn-gold text-sm py-2 px-4"
+                className="flex items-center gap-1 btn-gold text-[10px] sm:text-xs md:text-sm py-1.5 px-2 sm:py-2 sm:px-3 md:py-2 md:px-4"
               >
-                <Upload size={16} />
-                {t('contribute')}
-              </Link>
-
-              {/* Bouton Contribuer mobile — icône + texte petit */}
-              <Link
-                href="/upload"
-                className="md:hidden flex items-center gap-1 bg-faso-gold text-faso-night font-semibold rounded-lg px-2 py-1.5 text-[10px] leading-none transition-all hover:opacity-90"
-              >
-                <Upload size={11} />
+                <Upload size={11} className="sm:w-[13px] sm:h-[13px] md:w-4 md:h-4" />
                 <span>{t('contribute')}</span>
               </Link>
 
@@ -230,7 +218,7 @@ export default function Navbar() {
                 </button>
               </div>
 
-              {/* CTA Contribuer */}
+              {/* CTA Contribuer dans le menu */}
               <Link
                 href="/upload"
                 onClick={() => setMenuOpen(false)}
