@@ -1,31 +1,48 @@
-import { createServerClient } from '@supabase/ssr'
+/**
+ * middleware.ts — Authentification admin simplifiée avec JWT
+ * Vérifie uniquement le cookie JWT admin sur /admin/*
+ * Pas de Supabase Auth — cookie httpOnly sécurisé
+ */
 import { NextResponse, type NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
+
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET || 'fallback-secret-change-me'
+  return new TextEncoder().encode(secret)
+}
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const pathname = request.nextUrl.pathname
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
+  // Protéger uniquement les routes /admin/* (sauf /admin/login)
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
+    const adminToken = request.cookies.get('admin_token')?.value
+
+    if (!adminToken) {
+      return NextResponse.redirect(new URL('/admin/login', request.url))
     }
-  )
 
-  await supabase.auth.getUser()
+    try {
+      const { payload } = await jwtVerify(adminToken, getJwtSecret())
+      if (payload.role !== 'admin') {
+        return NextResponse.redirect(new URL('/admin/login', request.url))
+      }
+      // Token valide — continuer
+      return NextResponse.next()
+    } catch {
+      // Token invalide ou expiré — rediriger vers login
+      const response = NextResponse.redirect(new URL('/admin/login', request.url))
+      response.cookies.delete('admin_token')
+      return response
+    }
+  }
 
-  return supabaseResponse
+  // Toutes les autres routes sont publiques
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/admin/:path*',
+  ],
 }

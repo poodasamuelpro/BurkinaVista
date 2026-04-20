@@ -1,25 +1,23 @@
-import { redirect } from 'next/navigation'
-import { createServerSupabaseClient } from '@/lib/supabase'
+/**
+ * app/admin/layout.tsx — Layout admin
+ * Vérifie le cookie JWT (géré par middleware.ts)
+ * Le middleware redirige automatiquement si pas connecté
+ */
 import AdminSidebar from '@/components/admin/AdminSidebar'
 
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerSupabaseClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export const metadata = {
+  title: 'Administration — BurkinaVista',
+  robots: { index: false, follow: false },
+}
 
-  if (!user) redirect('/auth/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') redirect('/')
-
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen pt-16 flex">
+    <div className="min-h-screen pt-16 flex bg-faso-night">
+      {/* Sidebar desktop */}
       <AdminSidebar />
-      <main className="flex-1 ml-64 p-8">
+
+      {/* Contenu principal */}
+      <main className="flex-1 lg:ml-64 p-4 lg:p-8 overflow-x-hidden">
         {children}
       </main>
     </div>

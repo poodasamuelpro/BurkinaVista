@@ -1,3 +1,7 @@
+/**
+ * app/layout.tsx — Layout racine de BurkinaVista
+ * Métadonnées SEO globales + Navbar + Footer + Toaster
+ */
 import type { Metadata } from 'next'
 import { Playfair_Display, DM_Sans } from 'next/font/google'
 import './globals.css'
@@ -19,36 +23,40 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: 'FasoStock — Bibliothèque Visuelle du Burkina Faso',
-    template: '%s | FasoStock',
+    default: 'BurkinaVista — Bibliothèque Visuelle du Burkina Faso',
+    template: '%s | BurkinaVista',
   },
   description:
     'La plus grande bibliothèque libre de photos et vidéos du Burkina Faso. Images authentiques, libres de droits, contribuées par des Burkinabè.',
   keywords: [
     'Burkina Faso',
     'photos Burkina Faso',
-    'images Burkina',
+    'images Burkina Faso',
     'Ouagadougou',
-    'Afrique de l\'ouest',
+    "Afrique de l'ouest",
     'photos libres de droits Afrique',
     'stock photos Burkina Faso',
+    'BurkinaVista',
+    'bibliothèque visuelle',
   ],
   openGraph: {
     type: 'website',
     locale: 'fr_FR',
-    url: 'https://fasostock.com',
-    siteName: 'FasoStock',
-    title: 'FasoStock — Bibliothèque Visuelle du Burkina Faso',
+    url: 'https://burkina-vista.vercel.app',
+    siteName: 'BurkinaVista',
+    title: 'BurkinaVista — Bibliothèque Visuelle du Burkina Faso',
     description: 'Photos et vidéos authentiques du Burkina Faso, libres de droits.',
     images: [{ url: '/og-image.jpg', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'FasoStock',
+    title: 'BurkinaVista',
     description: 'Bibliothèque visuelle libre du Burkina Faso',
   },
   robots: { index: true, follow: true },
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://fasostock.com'),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
+  ),
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

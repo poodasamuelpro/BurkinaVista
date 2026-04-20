@@ -1,6 +1,11 @@
-import { notFound } from 'next/navigation' 
+/**
+ * app/photos/[slug]/page.tsx — Page détail d'un média
+ * Metadata SEO + JSON-LD
+ * Sans Supabase — utilise Neon
+ */
+import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { queryOne, queryMany, query } from '@/lib/db'
 import PhotoDetailClient from './PhotoDetailClient'
 import type { Media } from '@/types'
 
@@ -9,62 +14,57 @@ interface Props {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = await createServerSupabaseClient()
-  const { data: media } = await supabase
-    .from('medias')
-    .select('*, auteur:profiles(nom)')
-    .eq('slug', params.slug)
-    .eq('statut', 'approved')
-    .single()
+  const media = await queryOne<Media>(
+    "SELECT * FROM medias WHERE slug = $1 AND statut = 'approved'",
+    [params.slug]
+  )
 
-  if (!media) return { title: 'Média introuvable' }
+  if (!media) return { title: 'Média introuvable — BurkinaVista' }
 
   return {
-    title: media.titre,
-    description: media.description,
+    title: `${media.titre} — BurkinaVista`,
+    description: media.description || `Photo du Burkina Faso — ${media.categorie}`,
     keywords: media.tags,
     openGraph: {
       title: media.titre,
-      description: media.description,
+      description: media.description || '',
       images: [{ url: media.cloudinary_url || media.thumbnail_url || '' }],
       type: media.type === 'video' ? 'video.other' : 'article',
+      locale: 'fr_FR',
+      siteName: 'BurkinaVista',
     },
     twitter: {
       card: 'summary_large_image',
       title: media.titre,
-      description: media.description,
+      description: media.description || '',
       images: [media.cloudinary_url || media.thumbnail_url || ''],
     },
   }
 }
 
-export default async function PhotoDetailPage({ params }: Props) {
-  const supabase = await createServerSupabaseClient()
+export const dynamic = 'force-dynamic'
 
-  const { data: media } = await supabase
-    .from('medias')
-    .select('*, auteur:profiles(id, nom, avatar_url, bio, photos_count)')
-    .eq('slug', params.slug)
-    .eq('statut', 'approved')
-    .single()
+export default async function PhotoDetailPage({ params }: Props) {
+  const media = await queryOne<Media>(
+    "SELECT * FROM medias WHERE slug = $1 AND statut = 'approved'",
+    [params.slug]
+  )
 
   if (!media) notFound()
 
-  // Incrémenter views — fix: pas de .catch() sur rpc, on ignore l'erreur autrement
-  try {
-    await supabase.rpc('increment_views', { media_id: media.id })
-  } catch {}
+  // Incrémenter les vues (non bloquant)
+  query('UPDATE medias SET views = views + 1 WHERE id = $1', [media.id]).catch(() => {})
 
-  // Médias similaires
-  const { data: related } = await supabase
-    .from('medias')
-    .select('*')
-    .eq('statut', 'approved')
-    .eq('categorie', media.categorie)
-    .neq('id', media.id)
-    .limit(8)
+  // Médias similaires (même catégorie)
+  const related = await queryMany<Media>(
+    "SELECT * FROM medias WHERE statut = 'approved' AND categorie = $1 AND id != $2 ORDER BY created_at DESC LIMIT 8",
+    [media.categorie, media.id]
+  )
 
-  // JSON-LD pour Google
+  // JSON-LD pour Google (SEO structuré)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
+  const contributeurNom = `${media.contributeur_prenom || ''} ${media.contributeur_nom || ''}`.trim()
+
   const jsonLd = media.type === 'photo'
     ? {
         '@context': 'https://schema.org',
@@ -72,15 +72,20 @@ export default async function PhotoDetailPage({ params }: Props) {
         name: media.titre,
         description: media.description,
         contentUrl: media.cloudinary_url,
-        url: `${process.env.NEXT_PUBLIC_APP_URL}/photos/${media.slug}`,
-        author: { '@type': 'Person', name: media.auteur?.nom },
+        url: `${appUrl}/photos/${media.slug}`,
+        author: { '@type': 'Person', name: contributeurNom || 'BurkinaVista' },
         license: `https://creativecommons.org/licenses/${media.licence.toLowerCase().replace(' ', '-')}/4.0/`,
-        acquireLicensePage: `${process.env.NEXT_PUBLIC_APP_URL}/licences`,
-        creditText: `FasoStock — ${media.auteur?.nom}`,
-        creator: { '@type': 'Person', name: media.auteur?.nom },
+        acquireLicensePage: `${appUrl}/licences`,
+        creditText: `BurkinaVista — ${contributeurNom}`,
+        creator: { '@type': 'Person', name: contributeurNom || 'BurkinaVista' },
         copyrightNotice: media.licence,
-        contentLocation: { '@type': 'Place', name: `${media.ville || ''}, Burkina Faso` },
+        contentLocation: {
+          '@type': 'Place',
+          name: `${media.ville || 'Burkina Faso'}, Burkina Faso`,
+        },
         keywords: media.tags?.join(', '),
+        width: media.width,
+        height: media.height,
       }
     : {
         '@context': 'https://schema.org',
@@ -90,8 +95,10 @@ export default async function PhotoDetailPage({ params }: Props) {
         thumbnailUrl: media.thumbnail_url,
         contentUrl: media.stream_url,
         uploadDate: media.created_at,
-        duration: media.duration ? `PT${Math.floor(media.duration / 60)}M${media.duration % 60}S` : undefined,
-        author: { '@type': 'Person', name: media.auteur?.nom },
+        duration: media.duration
+          ? `PT${Math.floor(media.duration / 60)}M${media.duration % 60}S`
+          : undefined,
+        author: { '@type': 'Person', name: contributeurNom || 'BurkinaVista' },
       }
 
   return (
@@ -100,10 +107,7 @@ export default async function PhotoDetailPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PhotoDetailClient
-        media={media as Media}
-        related={(related || []) as Media[]}
-      />
+      <PhotoDetailClient media={media} related={related} />
     </>
   )
 }

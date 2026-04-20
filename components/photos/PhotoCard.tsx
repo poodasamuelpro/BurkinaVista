@@ -74,14 +74,12 @@ export default function PhotoCard({ media }: PhotoCardProps) {
           </p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {media.auteur?.avatar_url ? (
-                <img src={media.auteur.avatar_url} alt={media.auteur.nom} className="w-6 h-6 rounded-full object-cover" />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-faso-gold/20 flex items-center justify-center text-faso-gold text-xs font-bold">
-                  {media.auteur?.nom?.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className="text-white/60 text-xs">{media.auteur?.nom}</span>
+              <div className="w-6 h-6 rounded-full bg-faso-gold/20 flex items-center justify-center text-faso-gold text-xs font-bold">
+                {(media.contributeur_prenom || 'B')?.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-white/60 text-xs">
+                {media.contributeur_prenom} {media.contributeur_nom}
+              </span>
             </div>
             <div className="flex items-center gap-3 text-white/50 text-xs">
               <span className="flex items-center gap-1">

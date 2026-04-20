@@ -1,163 +1,205 @@
-import Anthropic from '@anthropic-ai/sdk'
+/**
+ * lib/ai-seo.ts — Génération SEO avec Gemini (Google)
+ * Utilise gemini-1.5-flash pour analyser les images et générer des métadonnées SEO
+ * Règles strictes : factuel, authentique, pas de clichés ni d'inventions
+ */
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import slugify from 'slugify'
-import { SEOData, UploadFormData } from '@/types'
+import type { SEOData, UploadFormData } from '@/types'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+// Initialisation Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
+/**
+ * Génère des métadonnées SEO à partir d'une image via Gemini Vision
+ * Respecte les règles strictes d'authenticité
+ */
 export async function generateSEOFromImage(
   imageUrl: string,
   userInput: UploadFormData,
-  googleVisionData?: GoogleVisionResult
+  visionData?: Record<string, unknown>
 ): Promise<SEOData> {
-  const visionContext = googleVisionData
-    ? `
-Analyse visuelle de l'image (Google Vision):
-- Labels détectés: ${googleVisionData.labels?.join(', ')}
-- Objets détectés: ${googleVisionData.objects?.join(', ')}
-- Texte détecté: ${googleVisionData.text || 'aucun'}
-- Couleurs dominantes: ${googleVisionData.colors?.join(', ')}
-    `
-    : ''
+  // Contexte utilisateur fourni
+  const userContext = [
+    userInput.titre ? `Titre fourni par l'utilisateur : "${userInput.titre}"` : 'Titre : non fourni',
+    userInput.description ? `Description fournie : "${userInput.description}"` : 'Description : non fournie',
+    userInput.ville ? `Ville : ${userInput.ville}` : '',
+    userInput.region ? `Région : ${userInput.region}` : '',
+    `Catégorie : ${userInput.categorie}`,
+    userInput.tags?.length ? `Tags suggérés : ${userInput.tags.join(', ')}` : '',
+  ].filter(Boolean).join('\n')
 
-  const userContext = `
-Informations fournies par l'utilisateur:
-- Titre: ${userInput.titre || 'non fourni'}
-- Description: ${userInput.description || 'non fournie'}
-- Ville: ${userInput.ville || 'non fournie'}
-- Région: ${userInput.region || 'non fournie'}
-- Catégorie: ${userInput.categorie}
-  `
+  // Prompt système strict
+  const systemPrompt = `Tu es un assistant SEO spécialisé Burkina Faso.
+Tu analyses des images et génères des métadonnées SEO.
+Tu te bases UNIQUEMENT sur ce que tu vois réellement dans l'image.
+Tu n'inventes rien. Tu n'exagères rien. Tu restes factuel et authentique.
+Tu améliores le texte fourni par l'utilisateur sans le contredire.
+Tu réponds UNIQUEMENT avec du JSON valide, rien d'autre.
 
-  const prompt = `Tu es un expert SEO spécialisé dans la culture et le patrimoine du Burkina Faso.
+RÈGLES ABSOLUES — Tu NE DOIS PAS :
+- Inventer une ville non mentionnée par l'utilisateur ou non visible sur l'image
+- Ajouter des personnes non visibles sur l'image
+- Embellir une réalité non visible sur l'image
+- Utiliser des clichés misérabilistes ou condescendants sur l'Afrique
+- Dire autre chose que ce qui est réellement visible
 
-${visionContext}
-${userContext}
+Tu DOIS :
+- Améliorer le titre si fourni par l'utilisateur, en gardant son sens
+- Créer un titre si champ vide, basé uniquement sur ce que tu vois
+- Améliorer la description si fournie, en restant factuel
+- Mentionner "Burkina Faso" dans le titre ET dans la description
+- Générer des tags en français ET en anglais pour le SEO international
+- Retourner UNIQUEMENT du JSON valide, sans markdown, sans explication`
 
-Ta mission: Génère des métadonnées SEO précises et optimisées pour cette image/vidéo du Burkina Faso.
+  const userPrompt = `${userContext}
 
-RÈGLES IMPORTANTES:
-1. Ne jamais inventer des informations non visibles dans l'image
-2. Si l'utilisateur a fourni des infos, améliore-les sans les contredire
-3. Utilise des mots-clés pertinents en français ET en anglais pour le SEO international
-4. Mentionne "Burkina Faso" dans le titre et la description
-5. Sois précis et authentique - pas de clichés misérabilistes
+Génère les métadonnées SEO pour cette image du Burkina Faso.
 
-Réponds UNIQUEMENT avec ce JSON valide (sans markdown):
+Retourne UNIQUEMENT ce JSON valide (sans markdown) :
 {
-  "titre": "Titre optimisé SEO, max 70 caractères, inclut Burkina Faso",
-  "description": "Description riche et précise de 150-200 mots, optimisée SEO, décrit ce qui est réellement visible",
+  "titre": "Titre SEO optimisé, max 70 caractères, contient 'Burkina Faso'",
+  "description": "Description précise de 150-200 mots, optimisée SEO, décrit UNIQUEMENT ce qui est visible",
   "alt_text": "Description courte pour accessibilité, max 125 caractères",
-  "tags": ["tag1", "tag2", "tag3", "...jusqu'à 15 tags pertinents en français et anglais"]
+  "tags": ["tag1-fr", "tag2-en", "...jusqu'à 15 tags pertinents en français et anglais"]
 }`
 
   try {
-    // Fix: télécharger l'image et l'envoyer en base64 car l'API Anthropic n'accepte pas type 'url'
+    // Télécharger l'image pour l'envoyer en base64 à Gemini
     const imageResponse = await fetch(imageUrl)
+    if (!imageResponse.ok) throw new Error('Impossible de télécharger l\'image')
+
     const imageBuffer = await imageResponse.arrayBuffer()
     const base64Image = Buffer.from(imageBuffer).toString('base64')
     const contentType = imageResponse.headers.get('content-type') || 'image/jpeg'
 
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 1000,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: contentType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                data: base64Image,
-              },
-            },
-            { type: 'text', text: prompt },
-          ],
-        },
-      ],
+    // Modèle Gemini avec vision
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: systemPrompt,
     })
 
-    const content = response.content[0]
-    if (content.type !== 'text') throw new Error('Réponse IA invalide')
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: contentType as 'image/jpeg' | 'image/png' | 'image/webp',
+          data: base64Image,
+        },
+      },
+      { text: userPrompt },
+    ])
 
-    const seoData = JSON.parse(content.text.replace(/```json|```/g, '').trim())
+    const responseText = result.response.text()
 
-    const slug = slugify(seoData.titre, {
+    // Nettoyer la réponse (enlever markdown si présent)
+    const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim()
+    const seoData = JSON.parse(cleanedResponse)
+
+    // Générer le slug à partir du titre
+    const slug = slugify(seoData.titre || userInput.titre || 'photo-burkina-faso', {
       lower: true,
       strict: true,
       locale: 'fr',
     }).substring(0, 80)
 
     return {
-      titre: seoData.titre,
-      description: seoData.description,
-      alt_text: seoData.alt_text,
-      tags: seoData.tags,
+      titre: seoData.titre || userInput.titre || `Photo Burkina Faso — ${userInput.categorie}`,
+      description: seoData.description || userInput.description || `Image du Burkina Faso dans la catégorie ${userInput.categorie}`,
+      alt_text: seoData.alt_text || seoData.titre || `Photo Burkina Faso`,
+      tags: Array.isArray(seoData.tags) ? seoData.tags : [],
       slug: `${slug}-${Date.now()}`,
     }
   } catch (error) {
-    console.error('Erreur génération SEO:', error)
-    const fallbackTitre = userInput.titre || `Photo Burkina Faso - ${userInput.categorie}`
-    return {
-      titre: fallbackTitre,
-      description: userInput.description || `Image du Burkina Faso dans la catégorie ${userInput.categorie}`,
-      alt_text: fallbackTitre,
-      tags: ['Burkina Faso', "Afrique de l'ouest", userInput.categorie, userInput.ville || ''].filter(Boolean),
-      slug: `${slugify(fallbackTitre, { lower: true, strict: true })}-${Date.now()}`,
-    }
+    console.error('Erreur génération SEO Gemini:', error)
+    // Fallback : utiliser les informations de l'utilisateur telles quelles
+    return generateFallbackSEO(userInput)
   }
 }
 
-export interface GoogleVisionResult {
-  labels?: string[]
-  objects?: string[]
-  text?: string
-  colors?: string[]
-}
+/**
+ * Génère des métadonnées SEO pour une vidéo (texte uniquement, sans vision)
+ */
+export async function generateSEOFromText(
+  userInput: UploadFormData & { titre?: string; description?: string; ville?: string; region?: string }
+): Promise<SEOData> {
+  const systemPrompt = `Tu es un assistant SEO spécialisé Burkina Faso.
+Tu génères des métadonnées SEO pour des vidéos basées sur les informations fournies.
+Tu restes factuel, authentique, pas de clichés.
+Tu réponds UNIQUEMENT avec du JSON valide.`
 
-export async function analyzeWithGoogleVision(
-  imageUrl: string
-): Promise<GoogleVisionResult> {
+  const userPrompt = `Génère des métadonnées SEO pour cette vidéo du Burkina Faso :
+- Titre fourni : "${userInput.titre || 'non fourni'}"
+- Description fournie : "${userInput.description || 'non fournie'}"
+- Ville : "${userInput.ville || 'non fournie'}"
+- Région : "${userInput.region || 'non fournie'}"
+- Catégorie : "${userInput.categorie}"
+
+Retourne UNIQUEMENT ce JSON :
+{
+  "titre": "Titre SEO, max 70 caractères, contient 'Burkina Faso'",
+  "description": "Description 150-200 mots, optimisée SEO, factuelle",
+  "alt_text": "Description courte, max 125 caractères",
+  "tags": ["tag1-fr", "tag2-en", "...jusqu'à 15 tags"]
+}`
+
   try {
-    const response = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${process.env.GOOGLE_VISION_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [
-            {
-              image: { source: { imageUri: imageUrl } },
-              features: [
-                { type: 'LABEL_DETECTION', maxResults: 10 },
-                { type: 'OBJECT_LOCALIZATION', maxResults: 5 },
-                { type: 'TEXT_DETECTION', maxResults: 1 },
-                { type: 'IMAGE_PROPERTIES', maxResults: 5 },
-              ],
-            },
-          ],
-        }),
-      }
-    )
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: systemPrompt,
+    })
 
-    const data = await response.json()
-    const result = data.responses[0]
+    const result = await model.generateContent(userPrompt)
+    const responseText = result.response.text()
+    const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim()
+    const seoData = JSON.parse(cleanedResponse)
+
+    const slug = slugify(seoData.titre || userInput.titre || 'video-burkina-faso', {
+      lower: true,
+      strict: true,
+      locale: 'fr',
+    }).substring(0, 80)
 
     return {
-      labels: result.labelAnnotations?.map((l: any) => l.description) || [],
-      objects: result.localizedObjectAnnotations?.map((o: any) => o.name) || [],
-      text: result.textAnnotations?.[0]?.description || '',
-      colors:
-        result.imagePropertiesAnnotation?.dominantColors?.colors?.map(
-          (c: any) =>
-            `rgb(${Math.round(c.color.red)},${Math.round(c.color.green)},${Math.round(c.color.blue)})`
-        ) || [],
+      titre: seoData.titre || userInput.titre || `Vidéo Burkina Faso — ${userInput.categorie}`,
+      description: seoData.description || userInput.description || `Vidéo du Burkina Faso dans la catégorie ${userInput.categorie}`,
+      alt_text: seoData.alt_text || seoData.titre || 'Vidéo Burkina Faso',
+      tags: Array.isArray(seoData.tags) ? seoData.tags : [],
+      slug: `${slug}-${Date.now()}`,
     }
   } catch (error) {
-    console.error('Erreur Google Vision:', error)
-    return {}
+    console.error('Erreur génération SEO texte Gemini:', error)
+    return generateFallbackSEO(userInput)
+  }
+}
+
+/**
+ * Fallback si l'IA échoue : utiliser les infos utilisateur telles quelles
+ */
+function generateFallbackSEO(userInput: UploadFormData & { titre?: string; description?: string; ville?: string }): SEOData {
+  const titreFallback = userInput.titre
+    ? `${userInput.titre} — Burkina Faso`
+    : `${userInput.categorie} — Burkina Faso`
+
+  const slug = slugify(titreFallback, {
+    lower: true,
+    strict: true,
+    locale: 'fr',
+  }).substring(0, 80)
+
+  return {
+    titre: titreFallback,
+    description: userInput.description
+      ? `${userInput.description} — Burkina Faso, ${userInput.categorie}.`
+      : `Image du Burkina Faso dans la catégorie ${userInput.categorie}. Découvrez la richesse visuelle du Burkina Faso sur BurkinaVista.`,
+    alt_text: titreFallback,
+    tags: [
+      'Burkina Faso',
+      'Afrique de l\'ouest',
+      userInput.categorie,
+      userInput.ville || '',
+      'West Africa',
+      'photography',
+    ].filter(Boolean),
+    slug: `${slug}-${Date.now()}`,
   }
 }

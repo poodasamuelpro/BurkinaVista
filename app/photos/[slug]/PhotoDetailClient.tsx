@@ -27,7 +27,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
       const { url } = await res.json()
       const a = document.createElement('a')
       a.href = url
-      a.download = `fasostock-${media.slug}`
+      a.download = `burkinavista-${media.slug}`
       a.click()
       toast.success('Téléchargement démarré !')
     } catch {
@@ -166,22 +166,20 @@ export default function PhotoDetailClient({ media, related }: Props) {
               <div className="faso-divider w-16" />
             </div>
 
-            {/* Auteur */}
-            {media.auteur && (
-              <Link href={`/profil/${media.auteur.id}`} className="card p-4 flex items-center gap-4 hover:border-faso-gold/20 block">
-                {media.auteur.avatar_url ? (
-                  <img src={media.auteur.avatar_url} alt={media.auteur.nom} className="w-12 h-12 rounded-full object-cover" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-faso-gold/10 flex items-center justify-center text-faso-gold font-display font-bold text-xl">
-                    {media.auteur.nom?.charAt(0).toUpperCase()}
-                  </div>
-                )}
+            {/* Contributeur */}
+            {(media.contributeur_prenom || media.contributeur_nom) && (
+              <div className="card p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-faso-gold/10 flex items-center justify-center text-faso-gold font-display font-bold text-xl flex-shrink-0">
+                  {(media.contributeur_prenom || 'B')?.charAt(0).toUpperCase()}
+                </div>
                 <div>
-                  <p className="font-medium text-white">{media.auteur.nom}</p>
-                  <p className="text-xs text-white/40">{(media.auteur as any).photos_count || 0} contributions</p>
+                  <p className="font-medium text-white">
+                    {media.contributeur_prenom} {media.contributeur_nom}
+                  </p>
+                  <p className="text-xs text-white/40">Contributeur BurkinaVista</p>
                 </div>
                 <User size={16} className="ml-auto text-white/20" />
-              </Link>
+              </div>
             )}
 
             {/* Métadonnées */}

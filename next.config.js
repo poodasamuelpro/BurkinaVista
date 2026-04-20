@@ -3,11 +3,12 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
-      { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'customer-*.cloudflarestream.com' },
+      { protocol: 'https', hostname: 'imagedelivery.net' },
     ],
   },
   experimental: {
-    serverActions: { allowedOrigins: ['localhost:3000'] },
+    serverActions: { allowedOrigins: ['localhost:3000', 'burkina-vista.vercel.app'] },
   },
 }
 

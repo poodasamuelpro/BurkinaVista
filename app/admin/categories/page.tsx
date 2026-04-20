@@ -1,8 +1,16 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+/**
+ * app/admin/categories/page.tsx — Page admin des catégories
+ */
+import { queryMany } from '@/lib/db'
 import AdminCategoriesClient from './AdminCategoriesClient'
+import type { Categorie } from '@/types'
+
+export const dynamic = 'force-dynamic'
 
 export default async function AdminCategoriesPage() {
-  const supabase = await createServerSupabaseClient()
-  const { data: categories } = await supabase.from('categories').select('*').order('nom')
-  return <AdminCategoriesClient categories={categories || []} />
+  const categories = await queryMany<Categorie>(
+    'SELECT * FROM categories ORDER BY nom ASC'
+  )
+
+  return <AdminCategoriesClient categories={categories} />
 }

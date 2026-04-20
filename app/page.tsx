@@ -1,5 +1,10 @@
+/**
+ * app/page.tsx — Page d'accueil
+ * Grille de médias avec filtrage et pagination
+ * Sans Supabase — utilise Neon via lib/db.ts
+ */
 import { Suspense } from 'react'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { queryMany, queryOne } from '@/lib/db'
 import HeroSection from '@/components/photos/HeroSection'
 import PhotoGrid from '@/components/photos/PhotoGrid'
 import CategoriesBar from '@/components/photos/CategoriesBar'
@@ -10,76 +15,85 @@ interface HomePageProps {
   searchParams: { q?: string; categorie?: string; type?: string; page?: string }
 }
 
+export const dynamic = 'force-dynamic'
+
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const supabase = await createServerSupabaseClient()
   const { q, categorie, type, page: pageStr } = searchParams
   const page = parseInt(pageStr || '1')
   const limit = 30
   const offset = (page - 1) * limit
 
-  // Fetch médias
-  let query = supabase
-    .from('medias')
-    .select('*, auteur:profiles(id, nom, avatar_url)', { count: 'exact' })
-    .eq('statut', 'approved')
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
+  // Construction de la requête dynamique
+  const conditions: string[] = ["statut = 'approved'"]
+  const params: unknown[] = []
+  let paramIdx = 1
 
   if (q) {
-    query = query.or(`titre.ilike.%${q}%,description.ilike.%${q}%,ville.ilike.%${q}%`)
+    conditions.push(
+      `(titre ILIKE $${paramIdx} OR description ILIKE $${paramIdx} OR ville ILIKE $${paramIdx})`
+    )
+    params.push(`%${q}%`)
+    paramIdx++
   }
-  if (categorie) query = query.eq('categorie', categorie)
-  if (type) query = query.eq('type', type)
+  if (categorie) {
+    conditions.push(`categorie = $${paramIdx}`)
+    params.push(categorie)
+    paramIdx++
+  }
+  if (type) {
+    conditions.push(`type = $${paramIdx}`)
+    params.push(type)
+    paramIdx++
+  }
 
-  const { data: medias, count } = await query
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  // Fetch catégories avec count
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('*')
-    .order('nom')
+  // Récupérer les médias et le total en parallèle
+  const [medias, countResult, categories, statsResult] = await Promise.all([
+    queryMany<Media>(
+      `SELECT * FROM medias ${whereClause} ORDER BY created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+      [...params, limit, offset]
+    ),
+    queryOne<{ total: number }>(
+      `SELECT COUNT(*) as total FROM medias ${whereClause}`,
+      params
+    ),
+    queryMany<Categorie>('SELECT * FROM categories ORDER BY nom ASC'),
+    queryOne<{ photos: number; videos: number; contributeurs: number }>(`
+      SELECT 
+        COUNT(*) FILTER (WHERE type = 'photo' AND statut = 'approved') as photos,
+        COUNT(*) FILTER (WHERE type = 'video' AND statut = 'approved') as videos,
+        (SELECT COUNT(*) FROM contributeurs) as contributeurs
+      FROM medias
+    `),
+  ])
 
-  // Stats globales
-  const { count: totalPhotos } = await supabase
-    .from('medias')
-    .select('*', { count: 'exact', head: true })
-    .eq('statut', 'approved')
-    .eq('type', 'photo')
-
-  const { count: totalVideos } = await supabase
-    .from('medias')
-    .select('*', { count: 'exact', head: true })
-    .eq('statut', 'approved')
-    .eq('type', 'video')
-
-  const { count: totalContributors } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
+  const total = Number(countResult?.total || 0)
 
   return (
     <div>
-      {/* Hero uniquement si pas de recherche */}
+      {/* Hero uniquement sur la page d'accueil sans filtres */}
       {!q && !categorie && page === 1 && (
         <>
-          <HeroSection featuredMedias={(medias || []).slice(0, 5) as Media[]} />
+          <HeroSection featuredMedias={medias.slice(0, 5)} />
           <StatsBar
-            photos={totalPhotos || 0}
-            videos={totalVideos || 0}
-            contributors={totalContributors || 0}
+            photos={Number(statsResult?.photos || 0)}
+            videos={Number(statsResult?.videos || 0)}
+            contributors={Number(statsResult?.contributeurs || 0)}
           />
         </>
       )}
 
-      {/* Barre catégories */}
+      {/* Barre de catégories + grille */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <CategoriesBar
-          categories={(categories || []) as Categorie[]}
+          categories={categories}
           activeCategory={categorie}
           activeType={type}
           searchQuery={q}
         />
 
-        {/* Résultats recherche */}
+        {/* Résultats de recherche */}
         {q && (
           <div className="mb-8 animate-fade-in">
             <h1 className="font-display text-2xl text-white">
@@ -87,16 +101,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <span className="text-gradient-gold">"{q}"</span>
             </h1>
             <p className="text-white/40 text-sm mt-1">
-              {count || 0} média{(count || 0) > 1 ? 's' : ''} trouvé{(count || 0) > 1 ? 's' : ''}
+              {total} média{total > 1 ? 's' : ''} trouvé{total > 1 ? 's' : ''}
             </p>
           </div>
         )}
 
-        {/* Grille */}
+        {/* Grille photos */}
         <Suspense fallback={<PhotoGridSkeleton />}>
           <PhotoGrid
-            medias={(medias || []) as Media[]}
-            total={count || 0}
+            medias={medias}
+            total={total}
             page={page}
             limit={limit}
             searchParams={searchParams}
@@ -114,7 +128,7 @@ function PhotoGridSkeleton() {
         <div
           key={i}
           className="skeleton rounded-2xl"
-          style={{ height: `${200 + Math.random() * 150}px` }}
+          style={{ height: `${200 + (i % 3) * 50}px` }}
         />
       ))}
     </div>

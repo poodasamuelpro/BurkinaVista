@@ -1,28 +1,41 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+/**
+ * app/admin/photos/page.tsx — Gestion des médias (admin)
+ * Filtrage par statut, pagination
+ */
+import { queryMany, queryOne } from '@/lib/db'
 import AdminPhotosClient from './AdminPhotosClient'
+import type { Media } from '@/types'
+
+export const dynamic = 'force-dynamic'
 
 interface Props {
   searchParams: { statut?: string; page?: string }
 }
 
 export default async function AdminPhotosPage({ searchParams }: Props) {
-  const supabase = await createServerSupabaseClient()
   const statut = searchParams.statut || 'pending'
   const page = parseInt(searchParams.page || '1')
   const limit = 20
   const offset = (page - 1) * limit
 
-  const { data: medias, count } = await supabase
-    .from('medias')
-    .select('*, auteur:profiles(id, nom, email)', { count: 'exact' })
-    .eq('statut', statut)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
+  const [medias, countResult] = await Promise.all([
+    queryMany<Media>(
+      `SELECT * FROM medias 
+       WHERE statut = $1 
+       ORDER BY created_at DESC 
+       LIMIT $2 OFFSET $3`,
+      [statut, limit, offset]
+    ),
+    queryOne<{ total: number }>(
+      'SELECT COUNT(*) as total FROM medias WHERE statut = $1',
+      [statut]
+    ),
+  ])
 
   return (
     <AdminPhotosClient
-      medias={medias || []}
-      total={count || 0}
+      medias={medias}
+      total={Number(countResult?.total || 0)}
       page={page}
       statut={statut}
     />

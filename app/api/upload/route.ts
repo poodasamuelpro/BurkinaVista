@@ -1,109 +1,180 @@
+/**
+ * app/api/upload/route.ts — Upload de médias (photos et vidéos)
+ * - Upload Cloudinary pour les photos
+ * - Upload Cloudflare Stream pour les vidéos
+ * - Génération SEO avec Gemini
+ * - Sauvegarde dans Neon
+ * - Envoi emails (contributeur + admin)
+ * - Sans authentification utilisateur requise
+ */
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase'
 import { uploadToCloudinary } from '@/lib/cloudinary'
-import { generateSEOFromImage, analyzeWithGoogleVision } from '@/lib/ai-seo'
+import { generateSEOFromImage, generateSEOFromText } from '@/lib/ai-seo'
+import { query, queryOne } from '@/lib/db'
+import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
+import type { Media } from '@/types'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createAdminClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-
     const formData = await req.formData()
+
+    // Données contributeur (obligatoires)
+    const contributeurPrenom = (formData.get('contributeur_prenom') as string)?.trim()
+    const contributeurNom = (formData.get('contributeur_nom') as string)?.trim()
+    const contributeurEmail = (formData.get('contributeur_email') as string)?.trim()
+    const contributeurTel = (formData.get('contributeur_tel') as string)?.trim() || null
+
+    // Données média
     const file = formData.get('file') as File
     const type = formData.get('type') as string
-    const titre = formData.get('titre') as string || ''
-    const description = formData.get('description') as string || ''
-    const ville = formData.get('ville') as string || ''
-    const region = formData.get('region') as string || ''
-    const categorie = formData.get('categorie') as string
-    const licence = formData.get('licence') as string || 'CC BY'
-    const tagsRaw = formData.get('tags') as string || ''
+    const titre = (formData.get('titre') as string)?.trim() || ''
+    const description = (formData.get('description') as string)?.trim() || ''
+    const ville = (formData.get('ville') as string)?.trim() || ''
+    const region = (formData.get('region') as string)?.trim() || ''
+    const categorie = (formData.get('categorie') as string)?.trim()
+    const licence = (formData.get('licence') as string) || 'CC BY'
+    const tagsRaw = (formData.get('tags') as string)?.trim() || ''
 
-    if (!file || !categorie) {
-      return NextResponse.json({ error: 'Fichier et catégorie requis' }, { status: 400 })
+    // Validations
+    if (!file) {
+      return NextResponse.json({ error: 'Fichier requis' }, { status: 400 })
     }
+    if (!categorie) {
+      return NextResponse.json({ error: 'Catégorie requise' }, { status: 400 })
+    }
+    if (!contributeurPrenom || !contributeurNom || !contributeurEmail) {
+      return NextResponse.json({ error: 'Prénom, nom et email du contributeur requis' }, { status: 400 })
+    }
+
+    const tags = tagsRaw ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
 
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    if (type === 'photo') {
-      const cloudinaryResult = await uploadToCloudinary(buffer, 'fasostock/photos')
+    let media: Media | null = null
 
-      const visionData = await analyzeWithGoogleVision(cloudinaryResult.url)
+    if (type === 'photo' || file.type.startsWith('image/')) {
+      // ────────────────────────────────
+      // UPLOAD PHOTO
+      // ────────────────────────────────
+      const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
 
       const userInput = {
         titre, description, ville, region, categorie,
-        licence: licence as any,
-        tags: tagsRaw ? tagsRaw.split(',').map(t => t.trim()) : [],
+        licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
+        tags,
       }
-      const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput, visionData)
+      const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput)
 
-      const { data: media, error } = await supabase.from('medias').insert({
-        type: 'photo',
-        cloudinary_url: cloudinaryResult.url,
-        cloudinary_public_id: cloudinaryResult.public_id,
-        width: cloudinaryResult.width,
-        height: cloudinaryResult.height,
-        slug: seoData.slug,
-        titre: seoData.titre,
-        description: seoData.description,
-        alt_text: seoData.alt_text,
-        tags: seoData.tags,
-        categorie,
-        ville: ville || null,
-        region: region || null,
-        auteur_id: user?.id || null,
-        licence,
-        statut: 'pending',
-      }).select().single()
-
-      if (error) throw error
-
-      await pingGoogle()
-      return NextResponse.json({ success: true, media })
+      // Insérer dans Neon
+      const [inserted] = await query<Media>(
+        `INSERT INTO medias (
+          type, cloudinary_url, cloudinary_public_id, width, height,
+          slug, titre, description, alt_text, tags, categorie,
+          ville, region, contributeur_nom, contributeur_prenom,
+          contributeur_email, contributeur_tel, licence, statut
+        ) VALUES (
+          'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17, 'pending'
+        ) RETURNING *`,
+        [
+          cloudinaryResult.url,
+          cloudinaryResult.public_id,
+          cloudinaryResult.width,
+          cloudinaryResult.height,
+          seoData.slug,
+          seoData.titre,
+          seoData.description,
+          seoData.alt_text,
+          seoData.tags,
+          categorie,
+          ville || null,
+          region || null,
+          contributeurNom,
+          contributeurPrenom,
+          contributeurEmail,
+          contributeurTel,
+          licence,
+        ]
+      )
+      media = inserted
 
     } else {
+      // ────────────────────────────────
+      // UPLOAD VIDÉO (Cloudflare Stream)
+      // ────────────────────────────────
       const streamData = await uploadToCloudflareStream(arrayBuffer, file.name)
 
-      const seoData = await generateSEOFromText({
+      const userInput = {
         titre, description, ville, region, categorie,
-        tags: tagsRaw ? tagsRaw.split(',').map(t => t.trim()) : [],
-      })
+        licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
+        tags,
+      }
+      const seoData = await generateSEOFromText(userInput)
 
-      const { data: media, error } = await supabase.from('medias').insert({
-        type: 'video',
-        stream_url: streamData.playbackUrl,
-        stream_id: streamData.uid,
-        thumbnail_url: streamData.thumbnail,
-        slug: seoData.slug,
-        titre: seoData.titre,
-        description: seoData.description,
-        alt_text: seoData.alt_text,
-        tags: seoData.tags,
-        categorie,
-        ville: ville || null,
-        region: region || null,
-        auteur_id: user?.id || null,
-        licence,
-        statut: 'pending',
-      }).select().single()
-
-      if (error) throw error
-
-      await pingGoogle()
-      return NextResponse.json({ success: true, media })
+      const [inserted] = await query<Media>(
+        `INSERT INTO medias (
+          type, stream_url, stream_id, thumbnail_url,
+          slug, titre, description, alt_text, tags, categorie,
+          ville, region, contributeur_nom, contributeur_prenom,
+          contributeur_email, contributeur_tel, licence, statut
+        ) VALUES (
+          'video', $1, $2, $3, $4, $5, $6, $7, $8, $9,
+          $10, $11, $12, $13, $14, $15, $16, 'pending'
+        ) RETURNING *`,
+        [
+          streamData.playbackUrl,
+          streamData.uid,
+          streamData.thumbnail,
+          seoData.slug,
+          seoData.titre,
+          seoData.description,
+          seoData.alt_text,
+          seoData.tags,
+          categorie,
+          ville || null,
+          region || null,
+          contributeurNom,
+          contributeurPrenom,
+          contributeurEmail,
+          contributeurTel,
+          licence,
+        ]
+      )
+      media = inserted
     }
 
+    if (!media) {
+      return NextResponse.json({ error: 'Erreur lors de la sauvegarde' }, { status: 500 })
+    }
+
+    // Sauvegarder/mettre à jour le contributeur
+    await upsertContributeur(contributeurPrenom, contributeurNom, contributeurEmail, contributeurTel)
+
+    // Envoi emails en parallèle (non bloquant)
+    const emailMedia = { ...media, contributeur_prenom: contributeurPrenom, contributeur_nom: contributeurNom, contributeur_email: contributeurEmail, contributeur_tel: contributeurTel || undefined }
+    Promise.all([
+      sendContributorConfirmation(contributeurEmail, contributeurPrenom, media.titre),
+      sendAdminNotification(emailMedia as Media),
+    ]).catch((err) => console.error('Erreur envoi emails:', err))
+
+    // Ping Google Sitemap
+    pingGoogle().catch(() => {})
+
+    return NextResponse.json({ success: true, media })
+
   } catch (error) {
-    console.error('Upload error:', error)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+    console.error('Erreur upload:', error)
+    return NextResponse.json({ error: 'Erreur serveur lors de l\'upload' }, { status: 500 })
   }
 }
 
+/**
+ * Upload vers Cloudflare Stream
+ */
 async function uploadToCloudflareStream(arrayBuffer: ArrayBuffer, filename: string) {
   const blob = new Blob([arrayBuffer])
   const formData = new FormData()
@@ -117,47 +188,61 @@ async function uploadToCloudflareStream(arrayBuffer: ArrayBuffer, filename: stri
       body: formData,
     }
   )
+
+  if (!res.ok) {
+    throw new Error(`Cloudflare Stream error: ${res.status}`)
+  }
+
   const data = await res.json()
+  const uid = data.result.uid
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+
   return {
-    uid: data.result.uid,
-    playbackUrl: `https://customer-${process.env.CLOUDFLARE_ACCOUNT_ID}.cloudflarestream.com/${data.result.uid}/manifest/video.m3u8`,
-    thumbnail: `https://customer-${process.env.CLOUDFLARE_ACCOUNT_ID}.cloudflarestream.com/${data.result.uid}/thumbnails/thumbnail.jpg`,
+    uid,
+    playbackUrl: `https://customer-${accountId}.cloudflarestream.com/${uid}/manifest/video.m3u8`,
+    thumbnail: `https://customer-${accountId}.cloudflarestream.com/${uid}/thumbnails/thumbnail.jpg`,
   }
 }
 
-async function generateSEOFromText(input: any) {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const { default: slugify } = await import('slugify')
+/**
+ * Crée ou met à jour le contributeur dans la base de données
+ */
+async function upsertContributeur(
+  prenom: string,
+  nom: string,
+  email: string,
+  tel: string | null
+): Promise<void> {
+  try {
+    // Vérifier si le contributeur existe déjà
+    const existing = await queryOne<{ id: string }>(
+      'SELECT id FROM contributeurs WHERE email = $1',
+      [email]
+    )
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-  const prompt = `Tu es un expert SEO sur le Burkina Faso.
-Génère des métadonnées SEO pour cette vidéo basées sur:
-- Titre utilisateur: ${input.titre || 'non fourni'}
-- Description: ${input.description || 'non fournie'}
-- Ville: ${input.ville || 'non fournie'}
-- Catégorie: ${input.categorie}
-
-Réponds UNIQUEMENT avec ce JSON:
-{"titre":"...","description":"...","alt_text":"...","tags":["..."]}`
-
-  const res = await anthropic.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 500,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const text = res.content[0].type === 'text' ? res.content[0].text : '{}'
-  const data = JSON.parse(text.replace(/```json|```/g, '').trim())
-  const slug = `${slugify(data.titre || input.titre || 'video-burkina', { lower: true, strict: true })}-${Date.now()}`
-
-  return { ...data, slug }
+    if (existing) {
+      // Incrémenter le compteur
+      await query(
+        'UPDATE contributeurs SET medias_count = medias_count + 1 WHERE email = $1',
+        [email]
+      )
+    } else {
+      // Créer le nouveau contributeur
+      await query(
+        'INSERT INTO contributeurs (prenom, nom, email, tel, medias_count) VALUES ($1, $2, $3, $4, 1)',
+        [prenom, nom, email, tel]
+      )
+    }
+  } catch (error) {
+    console.error('Erreur upsert contributeur:', error)
+  }
 }
 
-async function pingGoogle() {
-  try {
-    await fetch(
-      `https://www.google.com/ping?sitemap=${process.env.NEXT_PUBLIC_APP_URL}/sitemap.xml`
-    )
-  } catch {}
+/**
+ * Ping Google pour indexer le nouveau sitemap
+ */
+async function pingGoogle(): Promise<void> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) return
+  await fetch(`https://www.google.com/ping?sitemap=${appUrl}/sitemap.xml`)
 }
