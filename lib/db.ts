@@ -1,23 +1,17 @@
-/**
- * lib/db.ts — Connexion Neon PostgreSQL
- * Utilise @neondatabase/serverless pour Vercel Edge/Node.js
- */
 import { neon, neonConfig } from '@neondatabase/serverless'
 
-// Configuration optimale pour les environnements serverless
 neonConfig.fetchConnectionCache = true
 
-// Vérification explicite pour éviter un crash silencieux au build
-if (!process.env.DATABASE_URL) {
-  throw new Error('[db] DATABASE_URL is not defined. Vérifie tes variables d\'environnement sur Vercel.')
+// Lazy init — pas de crash au build si DATABASE_URL manquante
+const getSQL = () => {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('[db] DATABASE_URL is not defined.')
+  }
+  return neon(process.env.DATABASE_URL)
 }
 
-// Instance SQL réutilisable (singleton)
-const sql = neon(process.env.DATABASE_URL)
+const sql = getSQL()
 
-/**
- * Exécute une requête SQL et retourne toutes les lignes
- */
 export async function query<T = Record<string, unknown>>(
   queryText: string,
   params: unknown[] = []
@@ -31,10 +25,6 @@ export async function query<T = Record<string, unknown>>(
   }
 }
 
-/**
- * Exécute une requête SQL et retourne une seule ligne
- * Retourne null si aucun résultat
- */
 export async function queryOne<T = Record<string, unknown>>(
   queryText: string,
   params: unknown[] = []
@@ -48,9 +38,6 @@ export async function queryOne<T = Record<string, unknown>>(
   }
 }
 
-/**
- * Exécute une requête SQL et retourne toutes les lignes (alias de query)
- */
 export async function queryMany<T = Record<string, unknown>>(
   queryText: string,
   params: unknown[] = []
@@ -58,10 +45,6 @@ export async function queryMany<T = Record<string, unknown>>(
   return query<T>(queryText, params)
 }
 
-/**
- * Exécute une requête SQL sans retour de données (INSERT, UPDATE, DELETE)
- * Retourne le nombre de lignes affectées
- */
 export async function execute(
   queryText: string,
   params: unknown[] = []
