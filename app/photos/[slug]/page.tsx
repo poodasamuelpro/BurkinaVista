@@ -1,7 +1,6 @@
 /**
  * app/photos/[slug]/page.tsx — Page détail d'un média
- * Metadata SEO + JSON-LD
- * Sans Supabase — utilise Neon
+ * Metadata SEO + JSON-LD — bilingue FR/EN
  */
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
@@ -10,7 +9,7 @@ import PhotoDetailClient from './PhotoDetailClient'
 import type { Media } from '@/types'
 
 interface Props {
-  params: { slug: string }
+  params: { slug: string; locale?: string }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -21,22 +20,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!media) return { title: 'Média introuvable — BurkinaVista' }
 
+  const locale = params.locale ?? 'fr'
+  const titre = locale === 'en' ? (media.titre_en ?? media.titre) : media.titre
+  const description = locale === 'en' ? (media.description_en ?? media.description) : media.description
+
   return {
-    title: `${media.titre} — BurkinaVista`,
-    description: media.description || `Photo du Burkina Faso — ${media.categorie}`,
+    title: `${titre} — BurkinaVista`,
+    description: description || `Photo du Burkina Faso — ${media.categorie}`,
     keywords: media.tags,
     openGraph: {
-      title: media.titre,
-      description: media.description || '',
+      title: titre,
+      description: description || '',
       images: [{ url: media.cloudinary_url || media.thumbnail_url || '' }],
       type: media.type === 'video' ? 'video.other' : 'article',
-      locale: 'fr_FR',
+      locale: locale === 'en' ? 'en_US' : 'fr_FR',
       siteName: 'BurkinaVista',
     },
     twitter: {
       card: 'summary_large_image',
-      title: media.titre,
-      description: media.description || '',
+      title: titre,
+      description: description || '',
       images: [media.cloudinary_url || media.thumbnail_url || ''],
     },
   }
