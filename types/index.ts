@@ -25,11 +25,14 @@ export interface Media {
   stream_id?: string
   thumbnail_url?: string
   duration?: number
-  // SEO
+  // SEO — FR (champs principaux)
   slug: string
   titre: string
+  titre_en?: string | null
   description: string
+  description_en?: string | null
   alt_text: string
+  alt_text_en?: string | null
   tags: string[]
   categorie: string
   ville?: string
@@ -87,8 +90,11 @@ export interface UploadFormData {
 
 export interface SEOData {
   titre: string
+  titre_en?: string | null
   description: string
+  description_en?: string | null
   alt_text: string
+  alt_text_en?: string | null
   tags: string[]
   slug: string
 }
