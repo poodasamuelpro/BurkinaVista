@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, queryMany } from '@/lib/db'
 import { sendNewsletter } from '@/lib/email'
+import { verifyAdminToken } from '@/lib/auth'
 import type { Media, Abonne } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -13,11 +14,13 @@ export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
   try {
-    // Vérification de l'autorisation Vercel Cron
+    // ✅ CORRECTION 1 — Sécuriser le cron en production
     const authHeader = req.headers.get('authorization')
-    if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      // Vercel envoie automatiquement le header, on accepte aussi sans secret en dev
-      // Pour la sécurité en production, on peut activer cette vérification
+    if (
+      process.env.NODE_ENV === 'production' &&
+      authHeader !== `Bearer ${process.env.CRON_SECRET}`
+    ) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Vérifier si newsletter automatique activée
@@ -33,10 +36,24 @@ export async function GET(req: NextRequest) {
     // Calculer le lundi précédent à 00:00:00
     const now = new Date()
     const lastMonday = new Date(now)
-    const dayOfWeek = now.getDay() // 0 = dimanche, 1 = lundi, ...
+    const dayOfWeek = now.getDay()
     const daysToLastMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
     lastMonday.setDate(now.getDate() - daysToLastMonday)
     lastMonday.setHours(0, 0, 0, 0)
+
+    // ✅ CORRECTION 2 — Anti double-envoi
+    const dejaEnvoye = await queryOne<{ id: string }>(
+      `SELECT id FROM newsletter_logs 
+       WHERE envoye_le >= $1 AND statut = 'sent'
+       LIMIT 1`,
+      [lastMonday.toISOString()]
+    )
+    if (dejaEnvoye) {
+      return NextResponse.json({
+        message: 'Newsletter déjà envoyée cette semaine',
+        sent: false,
+      })
+    }
 
     // Récupérer les médias approuvés depuis le lundi précédent
     const medias = await queryMany<Media>(
@@ -65,16 +82,26 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Envoyer la newsletter
-    await sendNewsletter(abonnes, medias)
-
-    // Logger dans newsletter_logs
+    // ✅ CORRECTION 3 — Statut dynamique selon succès/échec
     const sujet = `BurkinaVista — ${medias.length} nouveau${medias.length > 1 ? 'x' : ''} média${medias.length > 1 ? 's' : ''} cette semaine`
+    let statut = 'sent'
+
+    try {
+      await sendNewsletter(abonnes, medias)
+    } catch (sendError) {
+      statut = 'failed'
+      console.error('Erreur sendNewsletter:', sendError)
+    }
+
     await queryOne(
       `INSERT INTO newsletter_logs (sujet, nb_destinataires, nb_medias, statut)
-       VALUES ($1, $2, $3, 'sent') RETURNING id`,
-      [sujet, abonnes.length, medias.length]
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [sujet, abonnes.length, medias.length, statut]
     )
+
+    if (statut === 'failed') {
+      return NextResponse.json({ error: 'Échec envoi newsletter' }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
@@ -91,6 +118,16 @@ export async function GET(req: NextRequest) {
 // Route POST pour l'envoi manuel depuis le dashboard admin
 export async function POST(req: NextRequest) {
   try {
+    // ✅ CORRECTION 4 — Vérifier que c'est bien un admin connecté
+    const adminToken = req.cookies.get('admin_token')?.value
+    if (!adminToken) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    }
+    const isAdmin = await verifyAdminToken(adminToken)
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    }
+
     const { dateDebut, dateFin } = await req.json().catch(() => ({}))
 
     let mediasQuery: Media[]
@@ -102,7 +139,6 @@ export async function POST(req: NextRequest) {
         [dateDebut, dateFin]
       )
     } else {
-      // Médias de la semaine courante
       const oneWeekAgo = new Date()
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
       mediasQuery = await queryMany<Media>(
@@ -125,14 +161,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Aucun média pour cette période' }, { status: 400 })
     }
 
-    await sendNewsletter(abonnes, mediasQuery)
-
+    // ✅ CORRECTION 3 (POST) — Statut dynamique
     const sujet = `BurkinaVista — Envoi manuel — ${mediasQuery.length} média(s)`
+    let statut = 'sent'
+
+    try {
+      await sendNewsletter(abonnes, mediasQuery)
+    } catch (sendError) {
+      statut = 'failed'
+      console.error('Erreur sendNewsletter manuel:', sendError)
+    }
+
     await queryOne(
       `INSERT INTO newsletter_logs (sujet, nb_destinataires, nb_medias, statut)
-       VALUES ($1, $2, $3, 'sent') RETURNING id`,
-      [sujet, abonnes.length, mediasQuery.length]
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [sujet, abonnes.length, mediasQuery.length, statut]
     )
+
+    if (statut === 'failed') {
+      return NextResponse.json({ error: 'Échec envoi newsletter' }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
