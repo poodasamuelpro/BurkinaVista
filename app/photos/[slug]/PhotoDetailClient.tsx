@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Download, Share2, MapPin, Calendar, Tag, Eye, ChevronLeft, Play, User, Check } from 'lucide-react'
 import PhotoCard from '@/components/photos/PhotoCard'
 import type { Media } from '@/types'
+import { useLocale } from '@/context/LocaleContext'
 import toast from 'react-hot-toast'
 
 interface Props {
@@ -15,6 +16,12 @@ export default function PhotoDetailClient({ media, related }: Props) {
   const [downloading, setDownloading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [playing, setPlaying] = useState(false)
+
+  // Lecture de la locale courante pour afficher FR ou EN
+  const { locale } = useLocale()
+  const titre = locale === 'en' ? (media.titre_en ?? media.titre) : media.titre
+  const description = locale === 'en' ? (media.description_en ?? media.description) : media.description
+  const altText = locale === 'en' ? (media.alt_text_en ?? media.alt_text) : media.alt_text
 
   const handleDownload = async () => {
     setDownloading(true)
@@ -32,8 +39,6 @@ export default function PhotoDetailClient({ media, related }: Props) {
 
       const { url } = await res.json()
 
-      // Fetch le fichier en blob pour forcer le téléchargement
-      // (évite que le navigateur ouvre juste l'image dans un onglet)
       const fileRes = await fetch(url)
       if (!fileRes.ok) throw new Error('Fetch blob échoué')
 
@@ -60,7 +65,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
   const handleShare = async () => {
     const url = window.location.href
     if (navigator.share) {
-      await navigator.share({ title: media.titre, url })
+      await navigator.share({ title: titre, url })
     } else {
       await navigator.clipboard.writeText(url)
       setCopied(true)
@@ -93,7 +98,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
               {media.type === 'photo' ? (
                 <img
                   src={media.cloudinary_url}
-                  alt={media.alt_text || media.titre}
+                  alt={altText || titre}
                   className="w-full object-contain max-h-[75vh]"
                 />
               ) : (
@@ -102,7 +107,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
                     <>
                       <img
                         src={media.thumbnail_url}
-                        alt={media.alt_text || media.titre}
+                        alt={altText || titre}
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -143,10 +148,10 @@ export default function PhotoDetailClient({ media, related }: Props) {
             </div>
 
             {/* Description */}
-            {media.description && (
+            {description && (
               <div className="mt-8 card p-6">
                 <h2 className="font-display text-lg text-white mb-3">À propos</h2>
-                <p className="text-white/60 leading-relaxed text-sm">{media.description}</p>
+                <p className="text-white/60 leading-relaxed text-sm">{description}</p>
               </div>
             )}
 
@@ -178,7 +183,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
             {/* Titre + licence */}
             <div>
               <div className="flex items-start justify-between gap-3 mb-3">
-                <h1 className="font-display text-2xl text-white leading-tight">{media.titre}</h1>
+                <h1 className="font-display text-2xl text-white leading-tight">{titre}</h1>
                 <span className={`badge ${licenceColors[media.licence] || 'badge-gray'} flex-shrink-0`}>
                   {media.licence}
                 </span>
@@ -249,7 +254,7 @@ export default function PhotoDetailClient({ media, related }: Props) {
               <div className="pt-2 border-t border-white/5">
                 <p className="text-xs text-white/20 leading-relaxed">
                   Licence {media.licence} — Vous pouvez utiliser cette image librement
-                  {media.licence !== 'CC0' && ' avec attribution à l\'auteur'}.
+                  {media.licence !== 'CC0' && " avec attribution à l'auteur"}.
                 </p>
               </div>
             </div>
