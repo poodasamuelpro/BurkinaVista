@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { Download, Share2, MapPin, Calendar, Tag, Eye, ChevronLeft, Play, User, Copy, Check } from 'lucide-react'
+import { Download, Share2, MapPin, Calendar, Tag, Eye, ChevronLeft, Play, User, Check } from 'lucide-react'
 import PhotoCard from '@/components/photos/PhotoCard'
 import type { Media } from '@/types'
 import toast from 'react-hot-toast'
@@ -24,11 +24,31 @@ export default function PhotoDetailClient({ media, related }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mediaId: media.id }),
       })
+
+      if (!res.ok) {
+        toast.error('Erreur lors du téléchargement')
+        return
+      }
+
       const { url } = await res.json()
+
+      // Fetch le fichier en blob pour forcer le téléchargement
+      // (évite que le navigateur ouvre juste l'image dans un onglet)
+      const fileRes = await fetch(url)
+      if (!fileRes.ok) throw new Error('Fetch blob échoué')
+
+      const blob = await fileRes.blob()
+      const blobUrl = URL.createObjectURL(blob)
+
+      const extension = media.type === 'video' ? 'mp4' : 'jpg'
       const a = document.createElement('a')
-      a.href = url
-      a.download = `burkinavista-${media.slug}`
+      a.href = blobUrl
+      a.download = `burkinavista-${media.slug}.${extension}`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+
       toast.success('Téléchargement démarré !')
     } catch {
       toast.error('Erreur lors du téléchargement')
