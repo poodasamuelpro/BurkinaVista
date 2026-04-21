@@ -15,14 +15,14 @@ export interface Contributeur {
 export interface Media {
   id: string
   type: MediaType
-  // Champs photo
+  // Champs photo (Cloudinary)
   cloudinary_url?: string
   cloudinary_public_id?: string
   width?: number
   height?: number
-  // Champs vidéo
-  stream_url?: string
-  stream_id?: string
+  // Champs vidéo (Backblaze B2)
+  b2_url?: string
+  b2_key?: string
   thumbnail_url?: string
   duration?: number
   // SEO — FR (champs principaux)
@@ -117,4 +117,9 @@ export interface AdminStats {
   photos_count: number
   videos_count: number
   medias_this_month: number
+}
+
+export interface UploadSettings {
+  upload_photos_enabled: boolean
+  upload_videos_enabled: boolean
 }
