@@ -1,12 +1,9 @@
+
 {
   "crons": [
     {
       "path": "/api/cron/newsletter",
       "schedule": "0 8 * * 1"
-    },
-    {
-      "path": "/api/cron/ping",
-      "schedule": "*/4 * * * *"
     }
   ]
 }
