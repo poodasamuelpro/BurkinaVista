@@ -16,12 +16,14 @@ interface HomePageProps {
   searchParams: { q?: string; categorie?: string; type?: string; page?: string }
 }
 
-export const dynamic = 'force-dynamic'
+// On garde force-dynamic uniquement si filtres actifs,
+// sinon on laisse Next.js cacher la page 60s
+export const revalidate = 60
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const { q, categorie, type, page: pageStr } = searchParams
   const page = parseInt(pageStr || '1')
-  const limit = 30
+  const limit = 24 // réduit de 30 à 24 — moins de requêtes Cloudinary au premier rendu
   const offset = (page - 1) * limit
   const t = await getTranslations('home')
 
@@ -50,22 +52,29 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  // Récupérer les médias et le total en parallèle
+  // Toutes les requêtes en parallèle — on sépare le COUNT pour ne pas bloquer les médias
   const [medias, countResult, categories, statsResult] = await Promise.all([
     queryMany<Media>(
-      `SELECT * FROM medias ${whereClause} ORDER BY created_at DESC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+      // On sélectionne uniquement les colonnes nécessaires pour la grille
+      // (pas description_en, alt_text_en etc. qui alourdissent inutilement)
+      `SELECT id, type, cloudinary_url, thumbnail_url, slug, titre,
+              alt_text, tags, categorie, ville, width, height,
+              contributeur_prenom, contributeur_nom, licence, views, downloads
+       FROM medias ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
       [...params, limit, offset]
     ),
-    queryOne<{ total: number }>(
-      `SELECT COUNT(*) as total FROM medias ${whereClause}`,
+    queryOne<{ total: string }>(
+      `SELECT COUNT(*)::text as total FROM medias ${whereClause}`,
       params
     ),
     queryMany<Categorie>('SELECT * FROM categories ORDER BY nom ASC'),
-    queryOne<{ photos: number; videos: number; contributeurs: number }>(`
+    queryOne<{ photos: string; videos: string; contributeurs: string }>(`
       SELECT 
-        COUNT(*) FILTER (WHERE type = 'photo' AND statut = 'approved') as photos,
-        COUNT(*) FILTER (WHERE type = 'video' AND statut = 'approved') as videos,
-        (SELECT COUNT(*) FROM contributeurs) as contributeurs
+        COUNT(*) FILTER (WHERE type = 'photo' AND statut = 'approved')::text as photos,
+        COUNT(*) FILTER (WHERE type = 'video' AND statut = 'approved')::text as videos,
+        (SELECT COUNT(*)::text FROM contributeurs) as contributeurs
       FROM medias
     `),
   ])
@@ -74,7 +83,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <div>
-      {/* Hero uniquement sur la page d'accueil sans filtres */}
       {!q && !categorie && page === 1 && (
         <>
           <HeroSection featuredMedias={medias.slice(0, 5)} />
@@ -86,7 +94,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </>
       )}
 
-      {/* Barre de catégories + grille */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <CategoriesBar
           categories={categories}
@@ -95,9 +102,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           searchQuery={q}
         />
 
-        {/* Résultats de recherche — texte traduit */}
         {q && (
-          <div className="mb-8 animate-fade-in">
+          <div className="mb-8">
             <h1 className="font-display text-2xl" style={{ color: 'var(--text-primary)' }}>
               {t('results_for')}{' '}
               <span className="text-gradient-gold">"{q}"</span>
@@ -108,7 +114,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </div>
         )}
 
-        {/* Grille photos */}
         <Suspense fallback={<PhotoGridSkeleton />}>
           <PhotoGrid
             medias={medias}
