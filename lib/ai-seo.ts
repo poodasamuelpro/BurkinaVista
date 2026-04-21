@@ -162,8 +162,8 @@ export function generateSEOFromText(userInput: UploadFormData): SEOData {
     'BurkinaVista',
   ].filter(Boolean)
 
-  // Déduplication
-  const tags = [...new Set(tagsBase)]
+  // Déduplication — Array.from() compatible sans downlevelIteration
+  const tags = Array.from(new Set(tagsBase))
 
   const slug = slugify(titreFr, {
     lower: true,
