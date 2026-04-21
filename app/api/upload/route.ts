@@ -1,15 +1,17 @@
 /**
- * app/api/upload/route.ts — Upload de médias (photos et vidéos)
+ * app/api/upload/route.ts — Upload de médias (photos uniquement)
  * - Upload Cloudinary pour les photos
- * - Upload Cloudflare Stream pour les vidéos
  * - Génération SEO avec Gemini
  * - Sauvegarde dans Neon
  * - Envoi emails (contributeur + admin)
  * - Sans authentification utilisateur requise
+ *
+ * NOTE : L'upload vidéo (Cloudflare Stream) est désactivé côté serveur.
+ *        Toute tentative retourne un 503 propre sans toucher au serveur.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
-import { generateSEOFromImage, generateSEOFromText } from '@/lib/ai-seo'
+import { generateSEOFromImage } from '@/lib/ai-seo'
 import { query, queryOne } from '@/lib/db'
 import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
 import type { Media } from '@/types'
@@ -38,6 +40,14 @@ export async function POST(req: NextRequest) {
     const licence = (formData.get('licence') as string) || 'CC BY'
     const tagsRaw = (formData.get('tags') as string)?.trim() || ''
 
+    // ── Refus vidéo côté serveur (guard propre, pas de 404) ──
+    if (type === 'video' || file?.type?.startsWith('video/')) {
+      return NextResponse.json(
+        { error: "L'upload vidéo n'est pas encore disponible. Bientôt !" },
+        { status: 503 }
+      )
+    }
+
     // Validations
     if (!file) {
       return NextResponse.json({ error: 'Fichier requis' }, { status: 400 })
@@ -54,98 +64,51 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    let media: Media | null = null
+    // ────────────────────────────────
+    // UPLOAD PHOTO (Cloudinary)
+    // ────────────────────────────────
+    const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
 
-    if (type === 'photo' || file.type.startsWith('image/')) {
-      // ────────────────────────────────
-      // UPLOAD PHOTO
-      // ────────────────────────────────
-      const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
-
-      const userInput = {
-        titre, description, ville, region, categorie,
-        licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
-        tags,
-      }
-      const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput)
-
-      // Insérer dans Neon
-      const [inserted] = await query<Media>(
-        `INSERT INTO medias (
-          type, cloudinary_url, cloudinary_public_id, width, height,
-          slug, titre, description, alt_text, tags, categorie,
-          ville, region, contributeur_nom, contributeur_prenom,
-          contributeur_email, contributeur_tel, licence, statut
-        ) VALUES (
-          'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-          $11, $12, $13, $14, $15, $16, $17, 'pending'
-        ) RETURNING *`,
-        [
-          cloudinaryResult.url,
-          cloudinaryResult.public_id,
-          cloudinaryResult.width,
-          cloudinaryResult.height,
-          seoData.slug,
-          seoData.titre,
-          seoData.description,
-          seoData.alt_text,
-          seoData.tags,
-          categorie,
-          ville || null,
-          region || null,
-          contributeurNom,
-          contributeurPrenom,
-          contributeurEmail,
-          contributeurTel,
-          licence,
-        ]
-      )
-      media = inserted
-
-    } else {
-      // ────────────────────────────────
-      // UPLOAD VIDÉO (Cloudflare Stream)
-      // ────────────────────────────────
-      const streamData = await uploadToCloudflareStream(arrayBuffer, file.name)
-
-      const userInput = {
-        titre, description, ville, region, categorie,
-        licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
-        tags,
-      }
-      const seoData = await generateSEOFromText(userInput)
-
-      const [inserted] = await query<Media>(
-        `INSERT INTO medias (
-          type, stream_url, stream_id, thumbnail_url,
-          slug, titre, description, alt_text, tags, categorie,
-          ville, region, contributeur_nom, contributeur_prenom,
-          contributeur_email, contributeur_tel, licence, statut
-        ) VALUES (
-          'video', $1, $2, $3, $4, $5, $6, $7, $8, $9,
-          $10, $11, $12, $13, $14, $15, $16, 'pending'
-        ) RETURNING *`,
-        [
-          streamData.playbackUrl,
-          streamData.uid,
-          streamData.thumbnail,
-          seoData.slug,
-          seoData.titre,
-          seoData.description,
-          seoData.alt_text,
-          seoData.tags,
-          categorie,
-          ville || null,
-          region || null,
-          contributeurNom,
-          contributeurPrenom,
-          contributeurEmail,
-          contributeurTel,
-          licence,
-        ]
-      )
-      media = inserted
+    const userInput = {
+      titre, description, ville, region, categorie,
+      licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
+      tags,
     }
+    const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput)
+
+    // Insérer dans Neon
+    const [inserted] = await query<Media>(
+      `INSERT INTO medias (
+        type, cloudinary_url, cloudinary_public_id, width, height,
+        slug, titre, description, alt_text, tags, categorie,
+        ville, region, contributeur_nom, contributeur_prenom,
+        contributeur_email, contributeur_tel, licence, statut
+      ) VALUES (
+        'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, 'pending'
+      ) RETURNING *`,
+      [
+        cloudinaryResult.url,
+        cloudinaryResult.public_id,
+        cloudinaryResult.width,
+        cloudinaryResult.height,
+        seoData.slug,
+        seoData.titre,
+        seoData.description,
+        seoData.alt_text,
+        seoData.tags,
+        categorie,
+        ville || null,
+        region || null,
+        contributeurNom,
+        contributeurPrenom,
+        contributeurEmail,
+        contributeurTel,
+        licence,
+      ]
+    )
+
+    const media: Media | null = inserted ?? null
 
     if (!media) {
       return NextResponse.json({ error: 'Erreur lors de la sauvegarde' }, { status: 500 })
@@ -155,7 +118,13 @@ export async function POST(req: NextRequest) {
     await upsertContributeur(contributeurPrenom, contributeurNom, contributeurEmail, contributeurTel)
 
     // Envoi emails en parallèle (non bloquant)
-    const emailMedia = { ...media, contributeur_prenom: contributeurPrenom, contributeur_nom: contributeurNom, contributeur_email: contributeurEmail, contributeur_tel: contributeurTel || undefined }
+    const emailMedia = {
+      ...media,
+      contributeur_prenom: contributeurPrenom,
+      contributeur_nom: contributeurNom,
+      contributeur_email: contributeurEmail,
+      contributeur_tel: contributeurTel || undefined,
+    }
     Promise.all([
       sendContributorConfirmation(contributeurEmail, contributeurPrenom, media.titre),
       sendAdminNotification(emailMedia as Media),
@@ -168,39 +137,7 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Erreur upload:', error)
-    return NextResponse.json({ error: 'Erreur serveur lors de l\'upload' }, { status: 500 })
-  }
-}
-
-/**
- * Upload vers Cloudflare Stream
- */
-async function uploadToCloudflareStream(arrayBuffer: ArrayBuffer, filename: string) {
-  const blob = new Blob([arrayBuffer])
-  const formData = new FormData()
-  formData.append('file', blob, filename)
-
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/stream`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_STREAM_API_TOKEN}` },
-      body: formData,
-    }
-  )
-
-  if (!res.ok) {
-    throw new Error(`Cloudflare Stream error: ${res.status}`)
-  }
-
-  const data = await res.json()
-  const uid = data.result.uid
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
-
-  return {
-    uid,
-    playbackUrl: `https://customer-${accountId}.cloudflarestream.com/${uid}/manifest/video.m3u8`,
-    thumbnail: `https://customer-${accountId}.cloudflarestream.com/${uid}/thumbnails/thumbnail.jpg`,
+    return NextResponse.json({ error: "Erreur serveur lors de l'upload" }, { status: 500 })
   }
 }
 
@@ -214,20 +151,17 @@ async function upsertContributeur(
   tel: string | null
 ): Promise<void> {
   try {
-    // Vérifier si le contributeur existe déjà
     const existing = await queryOne<{ id: string }>(
       'SELECT id FROM contributeurs WHERE email = $1',
       [email]
     )
 
     if (existing) {
-      // Incrémenter le compteur
       await query(
         'UPDATE contributeurs SET medias_count = medias_count + 1 WHERE email = $1',
         [email]
       )
     } else {
-      // Créer le nouveau contributeur
       await query(
         'INSERT INTO contributeurs (prenom, nom, email, tel, medias_count) VALUES ($1, $2, $3, $4, 1)',
         [prenom, nom, email, tel]
