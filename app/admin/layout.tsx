@@ -3,21 +3,21 @@
  * Vérifie le cookie JWT (géré par middleware.ts)
  * Le middleware redirige automatiquement si pas connecté
  */
+'use client'
+import { usePathname } from 'next/navigation'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 
-export const metadata = {
-  title: 'Administration — BurkinaVista',
-  robots: { index: false, follow: false },
-}
-
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen pt-16 flex bg-faso-night">
-      {/* Sidebar desktop */}
-      <AdminSidebar />
+  const pathname = usePathname()
+  const isLoginPage = pathname === '/admin/login'
 
-      {/* Contenu principal */}
-      <main className="flex-1 lg:ml-64 p-4 lg:p-8 overflow-x-hidden">
+  return (
+    <div className="min-h-screen flex bg-faso-night">
+      {!isLoginPage && <AdminSidebar />}
+
+      <main className={`flex-1 overflow-x-hidden ${
+        isLoginPage ? '' : 'lg:ml-64 p-4 lg:p-8 pt-16'
+      }`}>
         {children}
       </main>
     </div>
