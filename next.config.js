@@ -2,13 +2,22 @@
 const nextConfig = {
   images: {
     remotePatterns: [
+      // Cloudinary — photos
       { protocol: 'https', hostname: 'res.cloudinary.com' },
-      { protocol: 'https', hostname: 'customer-*.cloudflarestream.com' },
-      { protocol: 'https', hostname: 'imagedelivery.net' },
+      // Backblaze B2 — vidéos (bucket public EU Central)
+      { protocol: 'https', hostname: '*.backblazeb2.com' },
+      // Sous-domaine CDN Cloudflare devant Backblaze
+      { protocol: 'https', hostname: 'burkinavista.poodasamuel.com' },
     ],
   },
   experimental: {
-    serverActions: { allowedOrigins: ['localhost:3000', 'burkina-vista.vercel.app'] },
+    serverActions: {
+      allowedOrigins: [
+        'localhost:3000',
+        'burkina-vista.vercel.app',
+        'burkinavista.poodasamuel.com',
+      ],
+    },
     serverComponentsExternalPackages: ['@neondatabase/serverless'],
   },
 }
