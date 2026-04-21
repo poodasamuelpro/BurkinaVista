@@ -105,11 +105,17 @@ export default function PhotoDetailClient({ media, related }: Props) {
                 <div className="relative aspect-video bg-black">
                   {!playing ? (
                     <>
-                      <img
-                        src={media.thumbnail_url}
-                        alt={altText || titre}
-                        className="w-full h-full object-cover"
-                      />
+                      {media.thumbnail_url ? (
+                        <img
+                          src={media.thumbnail_url}
+                          alt={altText || titre}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-faso-dusk flex items-center justify-center">
+                          <Play size={48} className="text-white/20" />
+                        </div>
+                      )}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                         <button
                           onClick={() => setPlaying(true)}
@@ -120,8 +126,9 @@ export default function PhotoDetailClient({ media, related }: Props) {
                       </div>
                     </>
                   ) : (
+                    // b2_url remplace stream_url — URL Backblaze B2 via Cloudflare CDN
                     <video
-                      src={media.stream_url}
+                      src={media.b2_url}
                       controls
                       autoPlay
                       className="w-full h-full object-contain"
@@ -216,7 +223,9 @@ export default function PhotoDetailClient({ media, related }: Props) {
                   <MapPin size={15} className="text-faso-red" />
                   <div>
                     <p className="text-xs text-white/30">Lieu</p>
-                    <p className="text-sm text-white">{media.ville}{media.region && `, ${media.region}`}</p>
+                    <p className="text-sm text-white">
+                      {media.ville}{media.region && `, ${media.region}`}
+                    </p>
                   </div>
                 </div>
               )}
@@ -237,13 +246,17 @@ export default function PhotoDetailClient({ media, related }: Props) {
                 <Eye size={15} className="text-faso-green" />
                 <div>
                   <p className="text-xs text-white/30">Statistiques</p>
-                  <p className="text-sm text-white">{media.views} vues · {media.downloads} téléchargements</p>
+                  <p className="text-sm text-white">
+                    {media.views} vues · {media.downloads} téléchargements
+                  </p>
                 </div>
               </div>
 
               {media.type === 'photo' && media.width && media.height && (
                 <div className="flex items-center gap-3">
-                  <div className="w-4 h-4 rounded border border-white/20 flex items-center justify-center text-[8px] text-white/40">px</div>
+                  <div className="w-4 h-4 rounded border border-white/20 flex items-center justify-center text-[8px] text-white/40">
+                    px
+                  </div>
                   <div>
                     <p className="text-xs text-white/30">Dimensions</p>
                     <p className="text-sm text-white">{media.width} × {media.height} px</p>
@@ -251,9 +264,23 @@ export default function PhotoDetailClient({ media, related }: Props) {
                 </div>
               )}
 
+              {media.type === 'video' && media.duration && (
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded border border-white/20 flex items-center justify-center text-[8px] text-white/40">
+                    ▶
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">Durée</p>
+                    <p className="text-sm text-white">
+                      {Math.floor(media.duration / 60)}m {media.duration % 60}s
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="pt-2 border-t border-white/5">
                 <p className="text-xs text-white/20 leading-relaxed">
-                  Licence {media.licence} — Vous pouvez utiliser cette image librement
+                  Licence {media.licence} — Vous pouvez utiliser ce média librement
                   {media.licence !== 'CC0' && " avec attribution à l'auteur"}.
                 </p>
               </div>
