@@ -4,10 +4,10 @@ const nextConfig = {
     remotePatterns: [
       // Cloudinary — photos
       { protocol: 'https', hostname: 'res.cloudinary.com' },
-      // Backblaze B2 — vidéos (bucket public EU Central)
+      // Backblaze B2 — accès direct bucket (fallback)
       { protocol: 'https', hostname: '*.backblazeb2.com' },
-      // Sous-domaine CDN Cloudflare devant Backblaze
-      { protocol: 'https', hostname: 'burkinavista.poodasamuel.com' },
+      // Sous-domaine CDN Cloudflare devant Backblaze — URL publique vidéos
+      { protocol: 'https', hostname: 'burkinavistabf.poodasamuel.com' },
     ],
   },
   experimental: {
@@ -15,7 +15,7 @@ const nextConfig = {
       allowedOrigins: [
         'localhost:3000',
         'burkina-vista.vercel.app',
-        'burkinavista.poodasamuel.com',
+        'burkinavistabf.poodasamuel.com',
       ],
     },
     serverComponentsExternalPackages: ['@neondatabase/serverless'],
