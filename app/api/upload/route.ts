@@ -1,13 +1,13 @@
 /**
- * app/api/upload/route.ts — Upload de médias (photos uniquement)
- * - Upload Cloudinary pour les photos
- * - Génération SEO avec Gemini
- * - Sauvegarde dans Neon
- * - Envoi emails (contributeur + admin)
- * - Sans authentification utilisateur requise
+ * app/api/upload/route.ts — Upload de médias
+ * Photos  → Cloudinary → SEO Gemini → Neon
+ * Vidéos  → Cette route retourne 400 car les vidéos passent par /api/videos/upload-url
+ *           puis /api/videos/save — jamais par le serveur Vercel
  *
- * NOTE : L'upload vidéo (Cloudflare Stream) est désactivé côté serveur.
- *        Toute tentative retourne un 503 propre sans toucher au serveur.
+ * Le guard vidéo ici est une sécurité résiduelle. Le vrai flux vidéo est :
+ *   1. Client demande URL signée à /api/videos/upload-url
+ *   2. Client uploade directement vers Backblaze B2
+ *   3. Client appelle /api/videos/save avec les métadonnées
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
@@ -40,11 +40,15 @@ export async function POST(req: NextRequest) {
     const licence = (formData.get('licence') as string) || 'CC BY'
     const tagsRaw = (formData.get('tags') as string)?.trim() || ''
 
-    // ── Refus vidéo côté serveur (guard propre, pas de 404) ──
+    // Guard vidéo — les vidéos ne passent pas par cette route
+    // Elles utilisent /api/videos/upload-url puis /api/videos/save
     if (type === 'video' || file?.type?.startsWith('video/')) {
       return NextResponse.json(
-        { error: "L'upload vidéo n'est pas encore disponible. Bientôt !" },
-        { status: 503 }
+        {
+          error:
+            "Les vidéos ne passent pas par cette route. Utilisez /api/videos/upload-url puis /api/videos/save.",
+        },
+        { status: 400 }
       )
     }
 
@@ -56,10 +60,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Catégorie requise' }, { status: 400 })
     }
     if (!contributeurPrenom || !contributeurNom || !contributeurEmail) {
-      return NextResponse.json({ error: 'Prénom, nom et email du contributeur requis' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Prénom, nom et email du contributeur requis' },
+        { status: 400 }
+      )
     }
 
-    const tags = tagsRaw ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+    const tags = tagsRaw
+      ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean)
+      : []
 
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
@@ -70,7 +79,11 @@ export async function POST(req: NextRequest) {
     const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
 
     const userInput = {
-      titre, description, ville, region, categorie,
+      titre,
+      description,
+      ville,
+      region,
+      categorie,
       licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
       tags,
     }
@@ -80,12 +93,13 @@ export async function POST(req: NextRequest) {
     const [inserted] = await query<Media>(
       `INSERT INTO medias (
         type, cloudinary_url, cloudinary_public_id, width, height,
-        slug, titre, description, alt_text, tags, categorie,
+        slug, titre, titre_en, description, description_en,
+        alt_text, alt_text_en, tags, categorie,
         ville, region, contributeur_nom, contributeur_prenom,
         contributeur_email, contributeur_tel, licence, statut
       ) VALUES (
-        'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, 'pending'
+        'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending'
       ) RETURNING *`,
       [
         cloudinaryResult.url,
@@ -94,8 +108,11 @@ export async function POST(req: NextRequest) {
         cloudinaryResult.height,
         seoData.slug,
         seoData.titre,
+        seoData.titre_en,
         seoData.description,
+        seoData.description_en,
         seoData.alt_text,
+        seoData.alt_text_en,
         seoData.tags,
         categorie,
         ville || null,
@@ -118,17 +135,18 @@ export async function POST(req: NextRequest) {
     await upsertContributeur(contributeurPrenom, contributeurNom, contributeurEmail, contributeurTel)
 
     // Envoi emails en parallèle (non bloquant)
-    const emailMedia = {
+    const emailMedia: Media = {
       ...media,
       contributeur_prenom: contributeurPrenom,
       contributeur_nom: contributeurNom,
       contributeur_email: contributeurEmail,
       contributeur_tel: contributeurTel || undefined,
     }
+
     Promise.all([
       sendContributorConfirmation(contributeurEmail, contributeurPrenom, media.titre),
-      sendAdminNotification(emailMedia as Media),
-    ]).catch((err) => console.error('Erreur envoi emails:', err))
+      sendAdminNotification(emailMedia),
+    ]).catch((err) => console.error('[upload] Erreur envoi emails:', err))
 
     // Ping Google Sitemap
     pingGoogle().catch(() => {})
@@ -136,7 +154,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, media })
 
   } catch (error) {
-    console.error('Erreur upload:', error)
+    console.error('[upload] Erreur:', error)
     return NextResponse.json({ error: "Erreur serveur lors de l'upload" }, { status: 500 })
   }
 }
@@ -168,7 +186,7 @@ async function upsertContributeur(
       )
     }
   } catch (error) {
-    console.error('Erreur upsert contributeur:', error)
+    console.error('[upload] Erreur upsert contributeur:', error)
   }
 }
 
