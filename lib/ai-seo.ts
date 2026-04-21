@@ -3,6 +3,9 @@
  * Utilise gemini-1.5-flash pour analyser les images et générer des métadonnées SEO
  * Règles strictes : factuel, authentique, pas de clichés ni d'inventions
  * Génère FR + EN en un seul appel Gemini
+ *
+ * Pour les vidéos : generateSEOFromText() — pas d'analyse IA de la vidéo,
+ * uniquement basé sur les informations saisies par le contributeur.
  */
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import slugify from 'slugify'
@@ -120,6 +123,63 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown) :
     console.error('Erreur génération SEO Gemini:', error)
     // Fallback : utiliser les informations de l'utilisateur telles quelles
     return generateFallbackSEO(userInput)
+  }
+}
+
+/**
+ * Génère des métadonnées SEO pour les vidéos
+ * Basé UNIQUEMENT sur les informations saisies par le contributeur
+ * Pas d'analyse IA de la vidéo — traitement déterministe et instantané
+ */
+export function generateSEOFromText(userInput: UploadFormData): SEOData {
+  const titreFr = userInput.titre
+    ? `${userInput.titre} — Burkina Faso`
+    : `${userInput.categorie} — Burkina Faso`
+
+  const titreEn = userInput.titre
+    ? `${userInput.titre} — Burkina Faso`
+    : `${userInput.categorie} — Burkina Faso`
+
+  const descriptionFr = userInput.description
+    ? `${userInput.description}${userInput.ville ? ` — ${userInput.ville}` : ''}${userInput.region ? `, ${userInput.region}` : ''}, Burkina Faso.`
+    : `Vidéo du Burkina Faso dans la catégorie ${userInput.categorie}${userInput.ville ? `, filmée à ${userInput.ville}` : ''}. Découvrez la richesse visuelle du Burkina Faso sur BurkinaVista.`
+
+  const descriptionEn = userInput.description
+    ? `${userInput.description}${userInput.ville ? ` — ${userInput.ville}` : ''}${userInput.region ? `, ${userInput.region}` : ''}, Burkina Faso.`
+    : `Video from Burkina Faso in the ${userInput.categorie} category${userInput.ville ? `, filmed in ${userInput.ville}` : ''}. Discover the visual richness of Burkina Faso on BurkinaVista.`
+
+  // Construction des tags depuis les infos contributeur
+  const tagsBase = [
+    'Burkina Faso',
+    "Afrique de l'Ouest",
+    'West Africa',
+    userInput.categorie,
+    ...(userInput.ville ? [userInput.ville] : []),
+    ...(userInput.region ? [userInput.region] : []),
+    ...(userInput.tags ?? []),
+    'vidéo',
+    'video',
+    'BurkinaVista',
+  ].filter(Boolean)
+
+  // Déduplication
+  const tags = [...new Set(tagsBase)]
+
+  const slug = slugify(titreFr, {
+    lower: true,
+    strict: true,
+    locale: 'fr',
+  }).substring(0, 80)
+
+  return {
+    titre: titreFr,
+    titre_en: titreEn,
+    description: descriptionFr,
+    description_en: descriptionEn,
+    alt_text: titreFr,
+    alt_text_en: titreEn,
+    tags,
+    slug: `${slug}-${Date.now()}`,
   }
 }
 
