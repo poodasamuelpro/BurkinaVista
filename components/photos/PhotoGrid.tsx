@@ -34,14 +34,10 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
     return str ? `/?${str}` : '/'
   }
 
-  // Distribute photos into columns (masonry)
   const columns = 4
   const columnArrays: Media[][] = Array.from({ length: columns }, () => [])
-  medias.forEach((media, i) => {
-    columnArrays[i % columns].push(media)
-  })
+  medias.forEach((media, i) => { columnArrays[i % columns].push(media) })
 
-  /* Classes communes */
   const paginationInactive = isLight
     ? 'bg-[rgba(28,42,58,0.06)] text-[rgba(28,42,58,0.6)] hover:bg-[rgba(28,42,58,0.1)] hover:text-[#1C2A3A]'
     : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
@@ -71,54 +67,37 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
 
   return (
     <div ref={gridRef}>
-      {/* Masonry Grid */}
+      {/* Masonry Grid — animation retirée, opacity fixe à 1 */}
       <div className="flex gap-4">
-        {/* 2 columns on mobile */}
+
+        {/* 2 colonnes mobile */}
         <div className="flex gap-4 w-full md:hidden">
           {columnArrays.slice(0, 2).map((col, colIdx) => (
             <div key={colIdx} className="flex-1 flex flex-col gap-4">
-              {col.map((media, i) => (
-                <div
-                  key={media.id}
-                  className="animate-fade-in"
-                  style={{ animationDelay: `${(colIdx * col.length + i) * 0.05}s`, opacity: 0, animationFillMode: 'forwards' }}
-                >
-                  <PhotoCard media={media} />
-                </div>
+              {col.map((media) => (
+                <PhotoCard key={media.id} media={media} />
               ))}
             </div>
           ))}
         </div>
 
-        {/* 3 columns on tablet */}
+        {/* 3 colonnes tablet */}
         <div className="hidden md:flex lg:hidden gap-4 w-full">
           {columnArrays.slice(0, 3).map((col, colIdx) => (
             <div key={colIdx} className="flex-1 flex flex-col gap-4">
-              {col.map((media, i) => (
-                <div
-                  key={media.id}
-                  className="animate-fade-in"
-                  style={{ animationDelay: `${(colIdx * col.length + i) * 0.05}s`, opacity: 0, animationFillMode: 'forwards' }}
-                >
-                  <PhotoCard media={media} />
-                </div>
+              {col.map((media) => (
+                <PhotoCard key={media.id} media={media} />
               ))}
             </div>
           ))}
         </div>
 
-        {/* 4 columns on desktop */}
+        {/* 4 colonnes desktop */}
         <div className="hidden lg:flex gap-4 w-full">
           {columnArrays.map((col, colIdx) => (
             <div key={colIdx} className="flex-1 flex flex-col gap-4">
-              {col.map((media, i) => (
-                <div
-                  key={media.id}
-                  className="animate-fade-in"
-                  style={{ animationDelay: `${(colIdx * col.length + i) * 0.05}s`, opacity: 0, animationFillMode: 'forwards' }}
-                >
-                  <PhotoCard media={media} />
-                </div>
+              {col.map((media) => (
+                <PhotoCard key={media.id} media={media} />
               ))}
             </div>
           ))}
@@ -172,7 +151,6 @@ export default function PhotoGrid({ medias, total, page, limit, searchParams }: 
         </div>
       )}
 
-      {/* Total count */}
       <p className={`text-center text-xs pb-4 ${isLight ? 'text-[rgba(28,42,58,0.3)]' : 'text-white/20'}`}>
         {total} {total > 1 ? t('medias_count') : t('media_count')} • {t('page')} {page}/{totalPages}
       </p>
