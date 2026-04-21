@@ -7,8 +7,15 @@ import { createModerationToken, createUnsubscribeToken } from './auth'
 import type { Media, Abonne } from '@/types'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@burkinavista.com'
+
+// Adresse technique réelle (domaine vérifié sur Resend)
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@burkinavista.poodasamuel.com'
+// Nom affiché dans la boîte du destinataire
+const FROM_DISPLAY = `NoreplyBurkinaVista <${FROM_EMAIL}>`
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
+
+// Email admin interne (modération médias) → poodasamuelpro@gmail.com
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
 
 // ============================================================
@@ -25,7 +32,7 @@ export async function sendContributorConfirmation(
 ): Promise<void> {
   try {
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: email,
       subject: '✅ Votre contribution a bien été reçue — BurkinaVista',
       html: `
@@ -99,6 +106,7 @@ export async function sendContributorConfirmation(
 /**
  * Notifie l'admin d'un nouveau média en attente de modération
  * Inclut des boutons approve/reject avec tokens JWT (sans connexion requise)
+ * → Envoyé à ADMIN_EMAIL (poodasamuelpro@gmail.com via .env)
  */
 export async function sendAdminNotification(media: Media & {
   contributeur_nom?: string
@@ -134,7 +142,7 @@ export async function sendAdminNotification(media: Media & {
         : `<div style="background:#1A1A2E;border-radius:12px;padding:40px;text-align:center;color:rgba(255,255,255,0.4);">Vidéo — pas de thumbnail disponible</div>`
 
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: ADMIN_EMAIL,
       subject: `🔔 Nouveau média en attente — ${media.titre}`,
       html: `
@@ -250,7 +258,7 @@ export async function sendWelcomeNewsletter(email: string, nom?: string): Promis
     const unsubscribeUrl = `${APP_URL}/api/newsletter/unsubscribe?email=${encodeURIComponent(email)}&token=${unsubscribeToken}`
 
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: email,
       subject: '🇧🇫 Bienvenue sur BurkinaVista !',
       html: `
@@ -345,7 +353,7 @@ export async function sendNewsletter(abonnes: Abonne[], medias: Media[]): Promis
       const unsubscribeUrl = `${APP_URL}/api/newsletter/unsubscribe?email=${encodeURIComponent(abonne.email)}&token=${unsubscribeToken}`
 
       await resend.emails.send({
-        from: FROM_EMAIL,
+        from: FROM_DISPLAY,
         to: abonne.email,
         subject: `🇧🇫 Les nouveautés BurkinaVista de la semaine`,
         html: `
@@ -418,7 +426,7 @@ export async function sendApprovalConfirmation(
 ): Promise<void> {
   try {
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: email,
       subject: '🎉 Votre média a été approuvé — BurkinaVista',
       html: `
