@@ -6,8 +6,14 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@burkinavista.com'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'BurkinaVista@gmail.com'
+
+// Adresse technique réelle (domaine vérifié sur Resend)
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@burkinavista.poodasamuel.com'
+// Nom affiché dans la boîte du destinataire
+const FROM_DISPLAY = `NoreplyBurkinaVista <${FROM_EMAIL}>`
+
+// Email de réception des messages de contact → Gmail BurkinaVista
+const ADMIN_EMAIL = process.env.CONTACT_EMAIL || 'BurkinaVista@gmail.com'
 
 export async function POST(req: Request) {
   try {
@@ -29,9 +35,9 @@ export async function POST(req: Request) {
     }
     const typeLabel = type ? (typeLabels[type] || type) : 'Non spécifié'
 
-    // Email à l'admin
+    // Email à l'admin BurkinaVista@gmail.com
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: ADMIN_EMAIL,
       reply_to: email,
       subject: `📬 [Contact BurkinaVista] ${typeLabel} — ${subject}`,
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
 
     // Email de confirmation à l'expéditeur
     await resend.emails.send({
-      from: FROM_EMAIL,
+      from: FROM_DISPLAY,
       to: email,
       subject: '✅ Votre message a bien été reçu — BurkinaVista',
       html: `
