@@ -2,16 +2,17 @@
  * app/admin/page.tsx — Dashboard admin principal
  * Stats : médias, contributeurs, abonnés, téléchargements, vues
  * Médias récents, derniers contributeurs, derniers abonnés
+ * Toggles upload photos/vidéos (lecture admin_settings)
  */
 import { queryOne, queryMany } from '@/lib/db'
-import { Image, Video, Users, Download, Eye, Clock, TrendingUp, CheckCircle, Mail } from 'lucide-react'
+import { Image, Video, Users, Download, Eye, Clock, CheckCircle, Mail } from 'lucide-react'
 import Link from 'next/link'
 import type { Media, Contributeur, Abonne } from '@/types'
+import UploadToggles from '@/components/admin/UploadToggles'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminDashboard() {
-  // Stats globales
   const [
     statsMedias,
     statsContrib,
@@ -19,8 +20,8 @@ export default async function AdminDashboard() {
     recentMedias,
     recentContributeurs,
     recentAbonnes,
+    uploadSettings,
   ] = await Promise.all([
-    // Comptes médias
     queryOne<{
       total: number
       pending: number
@@ -38,25 +39,24 @@ export default async function AdminDashboard() {
         COALESCE(SUM(views), 0) as views
       FROM medias
     `),
-    // Contributeurs
     queryOne<{ total: number }>('SELECT COUNT(*) as total FROM contributeurs'),
-    // Abonnés actifs
     queryOne<{ total: number }>('SELECT COUNT(*) as total FROM abonnes WHERE actif = true'),
-    // Médias récents
-    queryMany<Media>(
-      `SELECT * FROM medias ORDER BY created_at DESC LIMIT 8`
-    ),
-    // Derniers contributeurs
-    queryMany<Contributeur>(
-      `SELECT * FROM contributeurs ORDER BY created_at DESC LIMIT 5`
-    ),
-    // Derniers abonnés
-    queryMany<Abonne>(
-      `SELECT * FROM abonnes ORDER BY created_at DESC LIMIT 5`
+    queryMany<Media>(`SELECT * FROM medias ORDER BY created_at DESC LIMIT 8`),
+    queryMany<Contributeur>(`SELECT * FROM contributeurs ORDER BY created_at DESC LIMIT 5`),
+    queryMany<Abonne>(`SELECT * FROM abonnes ORDER BY created_at DESC LIMIT 5`),
+    // Lire les toggles upload depuis admin_settings
+    queryMany<{ cle: string; valeur: string }>(
+      "SELECT cle, valeur FROM admin_settings WHERE cle IN ('upload_photos_enabled', 'upload_videos_enabled')"
     ),
   ])
 
   const pendingCount = Number(statsMedias?.pending || 0)
+
+  // Parser les toggles
+  const photosEnabled =
+    uploadSettings.find((s) => s.cle === 'upload_photos_enabled')?.valeur === 'true'
+  const videosEnabled =
+    uploadSettings.find((s) => s.cle === 'upload_videos_enabled')?.valeur === 'true'
 
   const stats = [
     {
@@ -151,11 +151,20 @@ export default async function AdminDashboard() {
         </Link>
       )}
 
+      {/* ── Toggles Upload — composant client interactif ── */}
+      <UploadToggles
+        initialPhotosEnabled={photosEnabled}
+        initialVideosEnabled={videosEnabled}
+      />
+
       {/* Grille de stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(({ label, value, icon: Icon, color, bg, urgent, href }) => {
           const card = (
-            <div key={label} className={`card p-5 ${urgent && value > 0 ? 'border-faso-red/30' : ''}`}>
+            <div
+              key={label}
+              className={`card p-5 ${urgent && value > 0 ? 'border-faso-red/30' : ''}`}
+            >
               <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center mb-3`}>
                 <Icon size={20} className={color} />
               </div>
@@ -169,7 +178,9 @@ export default async function AdminDashboard() {
             <Link key={label} href={href} className="hover:scale-[1.02] transition-transform">
               {card}
             </Link>
-          ) : card
+          ) : (
+            card
+          )
         })}
       </div>
 
@@ -184,8 +195,10 @@ export default async function AdminDashboard() {
           </div>
           <div className="space-y-2">
             {recentMedias.map((media) => (
-              <div key={media.id} className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0">
-                {/* Miniature */}
+              <div
+                key={media.id}
+                className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0"
+              >
                 <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-faso-dusk">
                   {media.cloudinary_url ? (
                     <img src={media.cloudinary_url} alt={media.titre} className="w-full h-full object-cover" />
@@ -203,11 +216,20 @@ export default async function AdminDashboard() {
                     {media.contributeur_prenom} {media.contributeur_nom} · {media.categorie}
                   </p>
                 </div>
-                <span className={`badge text-xs flex-shrink-0 ${
-                  media.statut === 'approved' ? 'badge-green' :
-                  media.statut === 'pending' ? 'badge-gold' : 'badge-red'
-                }`}>
-                  {media.statut === 'approved' ? 'Publié' : media.statut === 'pending' ? 'En attente' : 'Refusé'}
+                <span
+                  className={`badge text-xs flex-shrink-0 ${
+                    media.statut === 'approved'
+                      ? 'badge-green'
+                      : media.statut === 'pending'
+                      ? 'badge-gold'
+                      : 'badge-red'
+                  }`}
+                >
+                  {media.statut === 'approved'
+                    ? 'Publié'
+                    : media.statut === 'pending'
+                    ? 'En attente'
+                    : 'Refusé'}
                 </span>
               </div>
             ))}
@@ -234,8 +256,12 @@ export default async function AdminDashboard() {
                     {c.prenom?.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{c.prenom} {c.nom}</p>
-                    <p className="text-xs text-white/30">{c.medias_count} média{c.medias_count !== 1 ? 's' : ''}</p>
+                    <p className="text-sm text-white font-medium truncate">
+                      {c.prenom} {c.nom}
+                    </p>
+                    <p className="text-xs text-white/30">
+                      {c.medias_count} média{c.medias_count !== 1 ? 's' : ''}
+                    </p>
                   </div>
                 </div>
               ))}
