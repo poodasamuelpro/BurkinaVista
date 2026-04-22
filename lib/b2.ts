@@ -23,6 +23,11 @@ export function getB2Client(): S3Client {
     },
     // Forcer le path-style pour Backblaze (obligatoire)
     forcePathStyle: true,
+    // ✅ FIX CRITIQUE — Désactive le checksum CRC32 automatique
+    // Le SDK AWS v3 récent l'active par défaut.
+    // Backblaze B2 ne le supporte pas → cause ERR_FAILED sur le PUT
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
 }
 
@@ -40,5 +45,6 @@ export function getB2BucketName(): string {
  */
 export function getB2PublicUrl(): string {
   if (!process.env.B2_PUBLIC_URL) throw new Error('[b2] B2_PUBLIC_URL is not defined.')
-  return process.env.B2_PUBLIC_URL
+  // Supprime le slash final s'il est présent pour éviter les doubles //
+  return process.env.B2_PUBLIC_URL.replace(/\/$/, '')
 }
