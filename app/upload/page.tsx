@@ -12,6 +12,14 @@
  *  1. Client obtient URL pré-signée via /api/videos/upload-url
  *  2. Client uploade directement vers Backblaze B2 (pas via Vercel)
  *  3. Client envoie métadonnées à /api/videos/save
+ *
+ * CORRECTIONS APPLIQUÉES :
+ *  - 6.1 : Timeout XHR 2h + affichage vitesse de transfert
+ *  - 6.3 : Statuts photo/vidéo séparés (photoStatus / videoStatus) — corrige le
+ *          bug où "upload vidéo bloqué" s'affichait dans la dropzone image
+ *  - 6.6 : Dropzone vidéo accepte désormais MKV + AVI
+ *  - 6.7 : État activeTab mort supprimé — soumission photo et vidéo ne partagent
+ *          plus le même état status ; les boutons se désactivent mutuellement
  */
 import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -45,6 +53,7 @@ interface FileWithPreview {
   type: 'photo' | 'video'
 }
 
+// ✅ FIX 6.7 — Chaque section a son propre statut, plus de status global partagé
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error'
 
 export default function UploadPage() {
@@ -77,11 +86,13 @@ export default function UploadPage() {
   // ── État vidéo ──
   const [videoFile, setVideoFile] = useState<FileWithPreview | null>(null)
   const [videoProgress, setVideoProgress] = useState(0)
+  const [uploadSpeed, setUploadSpeed] = useState<string | null>(null)
 
-  // ── État commun ──
-  const [activeTab, setActiveTab] = useState<'photo' | 'video'>('photo')
-  const [status, setStatus] = useState<UploadStatus>('idle')
-  const [progress, setProgress] = useState(0)
+  // ✅ FIX 6.7 — Statuts séparés pour photos et vidéo
+  // Évite le bug où un status partagé affichait "upload vidéo bloqué" dans la dropzone photo
+  const [photoStatus, setPhotoStatus] = useState<UploadStatus>('idle')
+  const [photoProgress, setPhotoProgress] = useState(0)
+  const [videoStatus, setVideoStatus] = useState<UploadStatus>('idle')
 
   // Données contributeur
   const [contributeurPrenom, setContributeurPrenom] = useState('')
@@ -133,8 +144,13 @@ export default function UploadPage() {
       preview: URL.createObjectURL(file),
       type: 'video',
     })
+    // Réinitialiser le statut vidéo si on change de fichier
+    setVideoStatus('idle')
+    setVideoProgress(0)
+    setUploadSpeed(null)
   }, [videoFile])
 
+  // ✅ FIX 6.6 — Dropzone vidéo : ajout MKV + AVI (cohérence avec le serveur)
   const { getRootProps: getVideoRootProps, getInputProps: getVideoInputProps, isDragActive: isVideoDragActive } =
     useDropzone({
       onDrop: onDropVideo,
@@ -142,6 +158,9 @@ export default function UploadPage() {
         'video/mp4': ['.mp4'],
         'video/quicktime': ['.mov'],
         'video/webm': ['.webm'],
+        'video/x-matroska': ['.mkv'],  // ✅ AJOUTÉ — type MIME officiel MKV
+        'video/avi': ['.avi'],          // ✅ AJOUTÉ — AVI
+        'video/x-msvideo': ['.avi'],    // ✅ AJOUTÉ — AVI type alternatif navigateur
       },
       maxFiles: 1,
       maxSize: 2 * 1024 * 1024 * 1024, // 2 GB
@@ -158,6 +177,8 @@ export default function UploadPage() {
     if (videoFile) URL.revokeObjectURL(videoFile.preview)
     setVideoFile(null)
     setVideoProgress(0)
+    setVideoStatus('idle')
+    setUploadSpeed(null)
   }
 
   // ── Validation commune ──
@@ -173,13 +194,13 @@ export default function UploadPage() {
     if (!photoFiles.length) { toast.error(t('error_no_file')); return }
     if (!validateCommon()) return
 
-    setStatus('uploading')
-    setProgress(0)
+    setPhotoStatus('uploading')
+    setPhotoProgress(0)
     let successCount = 0
 
     for (let i = 0; i < photoFiles.length; i++) {
       const { file } = photoFiles[i]
-      setProgress(Math.round((i / photoFiles.length) * 60))
+      setPhotoProgress(Math.round((i / photoFiles.length) * 60))
 
       const formData = new FormData()
       formData.append('file', file)
@@ -197,8 +218,8 @@ export default function UploadPage() {
       formData.append('tags', tags)
 
       try {
-        setStatus('processing')
-        setProgress(60 + Math.round((i / photoFiles.length) * 35))
+        setPhotoStatus('processing')
+        setPhotoProgress(60 + Math.round((i / photoFiles.length) * 35))
 
         const res = await fetch('/api/upload', { method: 'POST', body: formData })
 
@@ -213,13 +234,13 @@ export default function UploadPage() {
       }
     }
 
-    setProgress(100)
+    setPhotoProgress(100)
     if (successCount > 0) {
-      setStatus('success')
+      setPhotoStatus('success')
       toast.success(`${successCount} ${successCount > 1 ? t('files_selected_plural') : t('files_selected')} — ${t('success_msg')}`)
       setTimeout(() => router.push('/'), 3000)
     } else {
-      setStatus('error')
+      setPhotoStatus('error')
     }
   }
 
@@ -228,8 +249,9 @@ export default function UploadPage() {
     if (!videoFile) { toast.error(t('error_no_file')); return }
     if (!validateCommon()) return
 
-    setStatus('uploading')
-    setProgress(0)
+    setVideoStatus('uploading')
+    setVideoProgress(0)
+    setUploadSpeed(null)
 
     try {
       // Étape 1 — Obtenir l'URL pré-signée Backblaze B2
@@ -246,7 +268,7 @@ export default function UploadPage() {
       if (!urlRes.ok) {
         const data = await urlRes.json()
         toast.error(data.error || t('error_unknown'))
-        setStatus('error')
+        setVideoStatus('error')
         return
       }
 
@@ -256,12 +278,20 @@ export default function UploadPage() {
       // Le serveur Vercel ne touche jamais le fichier vidéo
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
+        const startTime = Date.now()
 
+        // ✅ FIX 6.3 — Suivi vitesse de transfert
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 90)
-            setProgress(pct)
             setVideoProgress(pct)
+
+            // Calcul de la vitesse en MB/s
+            const elapsed = (Date.now() - startTime) / 1000 // secondes
+            if (elapsed > 0) {
+              const speedMBs = e.loaded / elapsed / (1024 * 1024)
+              setUploadSpeed(speedMBs.toFixed(1))
+            }
           }
         }
 
@@ -273,15 +303,20 @@ export default function UploadPage() {
           }
         }
 
-        xhr.onerror = () => reject(new Error('Erreur réseau lors de l\'upload'))
+        xhr.onerror = () => reject(new Error(t('error_network')))
+
+        // ✅ FIX 6.3 — Timeout 2 heures (connexions lentes Afrique de l'Ouest)
+        xhr.timeout = 7200000 // 2 heures en ms
+        xhr.ontimeout = () => reject(new Error("Timeout : l'upload a pris trop de temps. Vérifiez votre connexion."))
 
         xhr.open('PUT', signedUrl)
         xhr.setRequestHeader('Content-Type', videoFile.file.type)
         xhr.send(videoFile.file)
       })
 
-      setProgress(92)
-      setStatus('processing')
+      setVideoProgress(92)
+      setVideoStatus('processing')
+      setUploadSpeed(null)
 
       // Étape 3 — Sauvegarder les métadonnées dans Neon
       const saveRes = await fetch('/api/videos/save', {
@@ -307,19 +342,21 @@ export default function UploadPage() {
       if (!saveRes.ok) {
         const data = await saveRes.json()
         toast.error(data.error || t('error_unknown'))
-        setStatus('error')
+        setVideoStatus('error')
         return
       }
 
-      setProgress(100)
-      setStatus('success')
+      setVideoProgress(100)
+      setVideoStatus('success')
       toast.success(t('success_msg'))
       setTimeout(() => router.push('/'), 3000)
 
     } catch (err) {
       console.error('[upload-video]', err)
-      toast.error(t('error_network'))
-      setStatus('error')
+      const message = err instanceof Error ? err.message : t('error_network')
+      toast.error(message)
+      setVideoStatus('error')
+      setUploadSpeed(null)
     }
   }
 
@@ -500,6 +537,26 @@ export default function UploadPage() {
                     </div>
                   </div>
 
+                  {/* ✅ FIX 6.3 — Statut photo affiché uniquement dans la zone photo */}
+                  {photoStatus === 'uploading' && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-faso-gold">
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>{t('uploading')} ({photoProgress}%)</span>
+                    </div>
+                  )}
+                  {photoStatus === 'processing' && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-faso-gold">
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>{t('processing')}</span>
+                    </div>
+                  )}
+                  {photoStatus === 'error' && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-faso-red">
+                      <AlertCircle size={13} />
+                      <span>{t('error_retry')}</span>
+                    </div>
+                  )}
+
                   {/* Aperçu photos */}
                   {photoFiles.length > 0 && (
                     <div className="space-y-3 mt-4">
@@ -545,11 +602,12 @@ export default function UploadPage() {
                       <Lock size={28} className={labelMuted} />
                     </div>
                     <div className="text-center px-6">
+                      {/* ✅ FIX bug message — "upload photo bloqué" et non "upload vidéo bloqué" */}
                       <p className={`font-display text-lg mb-1 ${isLight ? 'text-[rgba(26,45,74,0.55)]' : 'text-white/50'}`}>
-                        {t('video_coming_soon_title')}
+                        {t('photo_coming_soon_title')}
                       </p>
                       <p className={`text-sm max-w-xs leading-relaxed ${isLight ? 'text-[rgba(26,45,74,0.35)]' : 'text-white/30'}`}>
-                        {t('video_coming_soon_desc')}
+                        {t('photo_coming_soon_desc')}
                       </p>
                     </div>
                   </div>
@@ -598,7 +656,8 @@ export default function UploadPage() {
                       </span>
                     )}
                   </div>
-                  <p className={`text-xs ${labelMuted}`}>MP4, MOV, WebM — max 2 Go</p>
+                  {/* ✅ FIX 6.6 — Label mis à jour pour inclure MKV + AVI */}
+                  <p className={`text-xs ${labelMuted}`}>MP4, MOV, WebM, MKV, AVI — max 2 Go</p>
                 </div>
               </div>
 
@@ -624,7 +683,7 @@ export default function UploadPage() {
                           <p className={`text-sm ${dropzoneSubText}`}>{t('click_select')}</p>
                         </div>
                         <div className="flex gap-2 flex-wrap justify-center">
-                          {['MP4', 'MOV', 'WebM', 'Max 2 Go'].map((b) => (
+                          {['MP4', 'MOV', 'WebM', 'MKV', 'AVI', 'Max 2 Go'].map((b) => (
                             <span key={b} className="badge badge-gray text-xs">{b}</span>
                           ))}
                         </div>
@@ -646,18 +705,45 @@ export default function UploadPage() {
                         <button
                           type="button"
                           onClick={removeVideo}
-                          className="w-7 h-7 rounded-full bg-faso-red/10 flex items-center justify-center hover:bg-faso-red/20 transition-colors"
+                          disabled={videoStatus === 'uploading' || videoStatus === 'processing'}
+                          className="w-7 h-7 rounded-full bg-faso-red/10 flex items-center justify-center hover:bg-faso-red/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <X size={14} className="text-faso-red" />
                         </button>
                       </div>
-                      {/* Barre progression upload vidéo */}
+
+                      {/* ✅ FIX 6.3 — Barre de progression + vitesse uniquement dans la zone vidéo */}
                       {videoProgress > 0 && videoProgress < 100 && (
-                        <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-faso-green transition-all duration-300"
-                            style={{ width: `${videoProgress}%` }}
-                          />
+                        <div className="space-y-1.5">
+                          <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-faso-green transition-all duration-300"
+                              style={{ width: `${videoProgress}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className={`text-xs ${labelMuted}`}>
+                              {videoStatus === 'processing' ? t('processing') : `${t('uploading')} ${videoProgress}%`}
+                            </span>
+                            {/* ✅ FIX 6.3 — Affichage vitesse de transfert */}
+                            {uploadSpeed && videoStatus === 'uploading' && (
+                              <span className={`text-xs ${labelMuted}`}>{uploadSpeed} MB/s</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ✅ FIX 6.3 — Statut vidéo affiché uniquement dans la zone vidéo */}
+                      {videoStatus === 'error' && (
+                        <div className="flex items-center gap-2 text-xs text-faso-red">
+                          <AlertCircle size={13} />
+                          <span>{t('error_retry')}</span>
+                        </div>
+                      )}
+                      {videoStatus === 'success' && (
+                        <div className="flex items-center gap-2 text-xs text-faso-green">
+                          <CheckCircle size={13} />
+                          <span>{t('success')}</span>
                         </div>
                       )}
                     </div>
@@ -679,6 +765,7 @@ export default function UploadPage() {
                       <Lock size={28} className={labelMuted} />
                     </div>
                     <div className="text-center px-6">
+                      {/* ✅ FIX bug message — clé i18n correcte pour la vidéo */}
                       <p className={`font-display text-lg mb-1 ${isLight ? 'text-[rgba(26,45,74,0.55)]' : 'text-white/50'}`}>
                         {t('video_coming_soon_title')}
                       </p>
@@ -826,13 +913,22 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* Bouton submit — adapté selon onglet actif et ce qui est sélectionné */}
+            {/* ════════════════════════════════════════════════
+                BOUTONS DE SOUMISSION
+                ✅ FIX 6.7 — Boutons avec statuts séparés et désactivation croisée
+                Le bouton photo est disabled si la vidéo est en cours (et vice versa)
+                Évite les double-soumissions et les états partagés corrompus
+            ════════════════════════════════════════════════ */}
+
+            {/* Bouton photos */}
             {uploadSettings.upload_photos_enabled && photoFiles.length > 0 && (
               <button
                 type="button"
                 onClick={handleSubmitPhotos}
                 disabled={
-                  status !== 'idle' ||
+                  photoStatus !== 'idle' ||
+                  videoStatus === 'uploading' ||
+                  videoStatus === 'processing' ||
                   !photoFiles.length ||
                   !categorie ||
                   !contributeurPrenom.trim() ||
@@ -841,20 +937,23 @@ export default function UploadPage() {
                 }
                 className="w-full btn-primary justify-center py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {status === 'idle'       && <><Upload      size={20} /> {t('submit')} ({photoFiles.length} photo{photoFiles.length > 1 ? 's' : ''})</>}
-                {status === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> {t('uploading')} ({progress}%)</>}
-                {status === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
-                {status === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
-                {status === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
+                {photoStatus === 'idle'       && <><Upload      size={20} /> {t('submit')} ({photoFiles.length} photo{photoFiles.length > 1 ? 's' : ''})</>}
+                {photoStatus === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> {t('uploading')} ({photoProgress}%)</>}
+                {photoStatus === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
+                {photoStatus === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
+                {photoStatus === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
               </button>
             )}
 
+            {/* Bouton vidéo */}
             {uploadSettings.upload_videos_enabled && videoFile && (
               <button
                 type="button"
                 onClick={handleSubmitVideo}
                 disabled={
-                  status !== 'idle' ||
+                  videoStatus !== 'idle' ||
+                  photoStatus === 'uploading' ||
+                  photoStatus === 'processing' ||
                   !videoFile ||
                   !categorie ||
                   !contributeurPrenom.trim() ||
@@ -864,11 +963,11 @@ export default function UploadPage() {
                 className="w-full btn-primary justify-center py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, var(--faso-green), var(--faso-gold))' }}
               >
-                {status === 'idle'       && <><Upload      size={20} /> {t('submit')} (1 vidéo)</>}
-                {status === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> Upload vidéo... ({progress}%)</>}
-                {status === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
-                {status === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
-                {status === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
+                {videoStatus === 'idle'       && <><Upload      size={20} /> {t('submit')} (1 vidéo)</>}
+                {videoStatus === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> Upload vidéo... ({videoProgress}%)</>}
+                {videoStatus === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
+                {videoStatus === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
+                {videoStatus === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
               </button>
             )}
 
@@ -883,18 +982,36 @@ export default function UploadPage() {
               </button>
             )}
 
-            {/* Barre de progression */}
-            {status !== 'idle' && status !== 'error' && (
+            {/* Barres de progression globales */}
+            {(photoStatus === 'uploading' || photoStatus === 'processing') && (
               <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-faso-red via-faso-gold to-faso-green transition-all duration-500"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${photoProgress}%` }}
+                />
+              </div>
+            )}
+            {(videoStatus === 'uploading' || videoStatus === 'processing') && (
+              <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-faso-green to-faso-gold transition-all duration-500"
+                  style={{ width: `${videoProgress}%` }}
                 />
               </div>
             )}
 
-            {/* Message de succès */}
-            {status === 'success' && (
+            {/* Message de succès — photo */}
+            {photoStatus === 'success' && (
+              <div className="card p-4 border border-faso-green/30 bg-faso-green/5 text-center">
+                <p className="text-faso-green font-medium text-sm">{t('success_msg')}</p>
+                <p className={`text-xs mt-1 ${successEmailText}`}>
+                  {t('email_sent')} {contributeurEmail}
+                </p>
+              </div>
+            )}
+
+            {/* Message de succès — vidéo */}
+            {videoStatus === 'success' && (
               <div className="card p-4 border border-faso-green/30 bg-faso-green/5 text-center">
                 <p className="text-faso-green font-medium text-sm">{t('success_msg')}</p>
                 <p className={`text-xs mt-1 ${successEmailText}`}>
