@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
       Bucket: bucketName,
       Key: b2Key,
       ContentType: contentType,
+      // ✅ FIX — Désactive explicitement le checksum CRC32 sur cette commande
+      // Double protection avec la config du client dans lib/b2.ts
+      ChecksumAlgorithm: undefined,
     })
 
     // 5. Générer l'URL pré-signée valable 2 heures
