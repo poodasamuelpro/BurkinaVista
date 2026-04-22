@@ -2,7 +2,7 @@
  * app/layout.tsx — Layout racine de BurkinaVista
  * Bilingue FR/EN + Dark/Light mode + Animations
  *
- * MODIFICATION (2026-04-22) :
+ * MODIFICATION (2026-04-22) : 
  *  - Navbar, Footer et FloatingLangSwitcher masqués sur toutes les pages /admin/*
  *    via le composant PublicLayout (client, vérifie le pathname)
  */
