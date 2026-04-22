@@ -3,18 +3,28 @@
  * Génère une URL pré-signée Backblaze B2 pour upload direct client → B2
  * Le serveur Vercel ne touche jamais le fichier vidéo
  *
- * CORRECTIONS APPLIQUÉES :
- *  [BUG-18] Headers CORS manquants sur cette route API
- *           → Le navigateur bloque la requête OPTIONS (preflight) depuis la page /upload
- *           → Ajout handleOptions() + headers CORS sur toutes les réponses
- *  [BUG-19] URL signée envoyée sans header x-amz-checksum-crc32 explicitement exclue
- *           → Déjà corrigé dans la version précédente mais renforcé
- *  [BUG-20] Pas de vérification que B2_PUBLIC_URL est bien défini avant construction URL
- *           → Ajout guard + message d'erreur explicite
- *  [BUG-21] fileSize non transmis comme ContentLength dans PutObjectCommand
- *           → Était déjà présent mais commentaire ajouté pour clarté
- *  [BUG-22] Le fichier vidéo uploadé dans B2 n'a pas de metadata CORS → bloque la lecture
- *           → Ajout de metadata x-amz-meta-origin dans PutObjectCommand pour traçabilité
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  AUDIT BurkinaVista — 2026-04-22                               ║
+ * ╠══════════════════════════════════════════════════════════════════╣
+ * ║  CORRECTIONS APPLIQUÉES :                                        ║
+ * ║  [BUG-18] Headers CORS manquants → OPTIONS preflight bloqué     ║
+ * ║           → Ajout OPTIONS handler + getCorsHeaders()            ║
+ * ║  [BUG-19] CRC32 checksum non exclu des headers signés           ║
+ * ║           → unhoistableHeaders sur x-amz-checksum-crc32         ║
+ * ║  [BUG-20] Guard B2_PUBLIC_URL absent → crash non explicite      ║
+ * ║           → try/catch + message d'erreur clair                  ║
+ * ║  [BUG-21] ContentLength non transmis                            ║
+ * ║           → ContentLength: fileSize ajouté                      ║
+ * ║  [BUG-22] Métadonnées de traçabilité absentes sur l'objet B2    ║
+ * ║           → Metadata x-source, x-uploaded-at                   ║
+ * ║  [URL-FIX] publicUrl construit avec mauvais préfixe             ║
+ * ║           AVANT : ${B2_PUBLIC_URL}/${b2Key}                     ║
+ * ║             = https://cdn.poodasamuel.com/videos/xxx → 404 ❌   ║
+ * ║           APRÈS : ${getB2PublicUrl()}/${b2Key}                  ║
+ * ║             = https://cdn.poodasamuel.com/file/bucket/          ║
+ * ║               videos/xxx → 200 ✅                               ║
+ * ║           (B2_PUBLIC_URL doit inclure /file/{bucket})           ║
+ * ╚══════════════════════════════════════════════════════════════════╝
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
@@ -151,7 +161,7 @@ export async function POST(req: NextRequest) {
       // [FIX BUG-21] ContentLength OBLIGATOIRE pour éviter que B2 rejette l'upload
       ContentLength: fileSize,
       ChecksumAlgorithm: undefined,
-      // Cache 30 jours sur l'objet B2 (comme demandé)
+      // Cache 30 jours sur l'objet B2
       CacheControl: 'public, max-age=2592000, immutable',
       // [FIX BUG-22] Metadata de traçabilité
       Metadata: {
@@ -163,13 +173,24 @@ export async function POST(req: NextRequest) {
     // 5. Générer l'URL pré-signée valable 2 heures
     const signedUrl = await getSignedUrl(b2Client, command, {
       expiresIn: 7200,
+      // [FIX BUG-19] Exclure les headers de checksum des headers signés
       unhoistableHeaders: new Set([
         'x-amz-checksum-crc32',
         'x-amz-sdk-checksum-algorithm',
       ]),
     })
 
-    // 6. Construire l'URL publique finale (via Cloudflare CDN)
+    // ╔════════════════════════════════════════════════════╗
+    // ║  FIX URL-FIX — Construction URL publique correcte ║
+    // ║                                                    ║
+    // ║  b2PublicUrlBase inclut déjà /file/{bucket} :     ║
+    // ║  https://cdn.poodasamuel.com/file/bucket-name     ║
+    // ║                                                    ║
+    // ║  + b2Key = videos/timestamp-filename.mp4          ║
+    // ║                                                    ║
+    // ║  => https://cdn.poodasamuel.com/file/bucket-name  ║
+    // ║        /videos/timestamp-filename.mp4  ✅         ║
+    // ╚════════════════════════════════════════════════════╝
     const publicUrl = `${b2PublicUrlBase}/${b2Key}`
 
     return NextResponse.json(
