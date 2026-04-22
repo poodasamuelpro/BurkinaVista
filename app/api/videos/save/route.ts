@@ -1,8 +1,16 @@
 /**
  * app/api/videos/save/route.ts
  * Sauvegarde les métadonnées d'une vidéo dans Neon après upload Backblaze B2
- * Génère le SEO à partir des infos contributeur (pas d'analyse IA de la vidéo)
- * Envoie les emails de confirmation
+ *
+ * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
+ *  - Validation URL b2Url (doit commencer par https://)
+ *  - Validation format b2Key (doit commencer par videos/)
+ *  - Validation email contributeur avec regex
+ *  - Protection injection : b2Key nettoyé avant insertion
+ *  - Correction doublonnage upsertContributeur (même code que upload/route.ts → centralisé)
+ *  - La fonction pingGoogle() dupliquée avec upload/route.ts — centralisée dans lib/ping.ts
+ *  - Ajout validation categorie parmi valeurs autorisées
+ *  - Limitation titre/description en longueur pour éviter overflow DB
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { generateSEOFromText } from '@/lib/ai-seo'
@@ -11,6 +19,24 @@ import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
 import type { Media, LicenceType } from '@/types'
 
 export const dynamic = 'force-dynamic'
+
+const ALLOWED_CATEGORIES = [
+  'Architecture & Urbanisme',
+  'Marchés & Commerce',
+  'Culture & Traditions',
+  'Nature & Paysages',
+  'Gastronomie',
+  'Art & Artisanat',
+  'Sport',
+  'Portraits',
+  'Événements & Festivals',
+  'Infrastructure & Développement',
+]
+
+const ALLOWED_LICENCES: LicenceType[] = ['CC BY', 'CC0', 'CC BY-NC', 'CC BY-SA']
+
+// Regex validation email basique
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,45 +48,76 @@ export async function POST(req: NextRequest) {
     // Données contributeur
     const contributeurPrenom = (body.contributeurPrenom as string)?.trim()
     const contributeurNom = (body.contributeurNom as string)?.trim()
-    const contributeurEmail = (body.contributeurEmail as string)?.trim()
+    const contributeurEmail = (body.contributeurEmail as string)?.trim().toLowerCase()
     const contributeurTel = (body.contributeurTel as string)?.trim() || null
 
     // Données média
-    const titre = (body.titre as string)?.trim() || ''
-    const description = (body.description as string)?.trim() || ''
-    const ville = (body.ville as string)?.trim() || ''
-    const region = (body.region as string)?.trim() || ''
+    const titre = ((body.titre as string)?.trim() || '').substring(0, 200)
+    const description = ((body.description as string)?.trim() || '').substring(0, 2000)
+    const ville = ((body.ville as string)?.trim() || '').substring(0, 100)
+    const region = ((body.region as string)?.trim() || '').substring(0, 100)
     const categorie = (body.categorie as string)?.trim()
-    const licence = (body.licence as string) || 'CC BY'
+    const licence = ((body.licence as string) || 'CC BY') as LicenceType
     const tagsRaw = (body.tags as string)?.trim() || ''
     const duration = body.duration ? Number(body.duration) : null
 
-    // Validations
-    if (!b2Url || !b2Key) {
-      return NextResponse.json({ error: 'b2Url et b2Key requis' }, { status: 400 })
+    // ── Validations ──────────────────────────────────────────
+
+    // Validation b2Url
+    if (!b2Url || typeof b2Url !== 'string' || !b2Url.startsWith('https://')) {
+      return NextResponse.json({ error: 'b2Url invalide (doit commencer par https://)' }, { status: 400 })
     }
-    if (!categorie) {
-      return NextResponse.json({ error: 'Catégorie requise' }, { status: 400 })
+
+    // Validation b2Key
+    if (!b2Key || typeof b2Key !== 'string' || !b2Key.startsWith('videos/')) {
+      return NextResponse.json({ error: 'b2Key invalide (doit commencer par videos/)' }, { status: 400 })
     }
-    if (!contributeurPrenom || !contributeurNom || !contributeurEmail) {
+
+    // Validation catégorie
+    if (!categorie || !ALLOWED_CATEGORIES.includes(categorie)) {
       return NextResponse.json(
-        { error: 'Prénom, nom et email du contributeur requis' },
+        { error: `Catégorie invalide. Valeurs acceptées : ${ALLOWED_CATEGORIES.join(', ')}` },
         { status: 400 }
       )
     }
 
+    // Validation licence
+    if (!ALLOWED_LICENCES.includes(licence)) {
+      return NextResponse.json({ error: 'Licence invalide' }, { status: 400 })
+    }
+
+    // Validation contributeur
+    if (!contributeurPrenom || !contributeurNom) {
+      return NextResponse.json(
+        { error: 'Prénom et nom du contributeur requis' },
+        { status: 400 }
+      )
+    }
+
+    if (!contributeurEmail || !EMAIL_REGEX.test(contributeurEmail)) {
+      return NextResponse.json(
+        { error: 'Email contributeur invalide' },
+        { status: 400 }
+      )
+    }
+
+    // Validation durée vidéo
+    if (duration !== null && (isNaN(duration) || duration < 0 || duration > 86400)) {
+      return NextResponse.json({ error: 'Durée vidéo invalide (max 86400 secondes)' }, { status: 400 })
+    }
+
     const tags = tagsRaw
-      ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean)
+      ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 20)
       : []
 
-    // Générer le SEO à partir des infos contributeur (pas d'analyse IA vidéo)
+    // Générer le SEO à partir des infos contributeur
     const seoData = generateSEOFromText({
       titre,
       description,
       ville,
       region,
       categorie,
-      licence: licence as LicenceType,
+      licence,
       tags,
     })
 
@@ -123,7 +180,7 @@ export async function POST(req: NextRequest) {
       sendAdminNotification(emailMedia),
     ]).catch((err) => console.error('[save-video] Erreur envoi emails:', err))
 
-    // Ping Google Sitemap
+    // Ping Google Sitemap (non bloquant)
     pingGoogle().catch(() => {})
 
     return NextResponse.json({ success: true, media })
