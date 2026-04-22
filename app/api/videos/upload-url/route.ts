@@ -12,13 +12,16 @@ import { queryOne } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-// Types MIME vidéo autorisés
+// ✅ FIX 6.5 — Types MIME vidéo autorisés corrigés
+// 'video/x-mkvideo' était incorrect (c'est le type AVI, pas MKV)
+// Le type officiel MKV est 'video/x-matroska'
 const ALLOWED_VIDEO_TYPES = [
   'video/mp4',
-  'video/quicktime',  // MOV
+  'video/quicktime',   // MOV
   'video/webm',
-  'video/x-mkvideo', // MKV
+  'video/x-matroska',  // MKV ✅ CORRIGÉ (était 'video/x-mkvideo')
   'video/avi',
+  'video/x-msvideo',   // AVI — type alternatif envoyé par certains navigateurs
 ]
 
 // Taille max : 2 GB
@@ -48,12 +51,21 @@ export async function POST(req: NextRequest) {
 
     if (!contentType || !ALLOWED_VIDEO_TYPES.includes(contentType)) {
       return NextResponse.json(
-        { error: 'Type de fichier non autorisé. Formats acceptés : MP4, MOV, WebM' },
+        { error: 'Type de fichier non autorisé. Formats acceptés : MP4, MOV, WebM, MKV, AVI' },
         { status: 400 }
       )
     }
 
-    if (fileSize && fileSize > MAX_SIZE_BYTES) {
+    // ✅ FIX 6.4 — fileSize rendu obligatoire (était optionnel avec `if (fileSize && ...)`)
+    // Un client malveillant pouvait omettre fileSize pour contourner la limite de taille
+    if (!fileSize || typeof fileSize !== 'number') {
+      return NextResponse.json(
+        { error: 'fileSize requis et doit être un nombre' },
+        { status: 400 }
+      )
+    }
+
+    if (fileSize > MAX_SIZE_BYTES) {
       return NextResponse.json(
         { error: 'Fichier trop volumineux. Maximum 2 Go.' },
         { status: 400 }
@@ -77,8 +89,10 @@ export async function POST(req: NextRequest) {
       Bucket: bucketName,
       Key: b2Key,
       ContentType: contentType,
-      // ✅ FIX — Désactive explicitement le checksum CRC32 sur cette commande
+      ContentLength: fileSize,
+      // ✅ FIX 6.1 — Désactive explicitement le checksum CRC32 sur cette commande
       // Double protection avec la config du client dans lib/b2.ts
+      // Backblaze B2 ne supporte pas les headers x-amz-checksum-*
       ChecksumAlgorithm: undefined,
     })
 
@@ -86,6 +100,12 @@ export async function POST(req: NextRequest) {
     // (suffisant même pour de très grosses vidéos sur une connexion lente)
     const signedUrl = await getSignedUrl(b2Client, command, {
       expiresIn: 7200, // 2 heures
+      // ✅ FIX 6.1 — Ne pas signer les headers de checksum dans l'URL
+      // Évite que l'URL pré-signée contienne x-amz-checksum-crc32 ou x-amz-sdk-checksum-algorithm
+      unhoistableHeaders: new Set([
+        'x-amz-checksum-crc32',
+        'x-amz-sdk-checksum-algorithm',
+      ]),
     })
 
     // 6. Construire l'URL publique finale (via Cloudflare CDN devant B2)
