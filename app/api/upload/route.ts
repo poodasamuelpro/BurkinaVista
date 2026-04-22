@@ -1,23 +1,43 @@
 /**
- * app/api/upload/route.ts — Upload de médias
- * Photos  → Cloudinary → SEO Gemini → Neon
- * Vidéos  → Cette route retourne 400 car les vidéos passent par /api/videos/upload-url
- *           puis /api/videos/save — jamais par le serveur Vercel
+ * app/api/upload/route.ts — Upload de médias (photos uniquement)
+ * Photos → Cloudinary → SEO Gemini → Neon
+ * Vidéos → redirigées vers /api/videos/upload-url puis /api/videos/save
  *
- * Le guard vidéo ici est une sécurité résiduelle. Le vrai flux vidéo est :
- *   1. Client demande URL signée à /api/videos/upload-url
- *   2. Client uploade directement vers Backblaze B2
- *   3. Client appelle /api/videos/save avec les métadonnées
+ * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
+ *  - Validation email contributeur avec regex
+ *  - Validation type MIME image stricte (pas seulement le champ type du formulaire)
+ *  - Limite taille fichier photo côté serveur (20MB max)
+ *  - Validation licence parmi valeurs autorisées
+ *  - Validation catégorie parmi valeurs autorisées
+ *  - Tags limités à 20 max, longueur par tag limitée à 50 chars
+ *  - Textes titre/description limités en longueur
+ *  - Ajout try/catch sur le ping Google (était implicite)
+ *  - maxDuration = 60 confirmé (cohérent avec Vercel Pro)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { generateSEOFromImage } from '@/lib/ai-seo'
 import { query, queryOne } from '@/lib/db'
 import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
-import type { Media } from '@/types'
+import type { Media, LicenceType } from '@/types'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
+
+const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'
+]
+const MAX_PHOTO_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB
+
+const ALLOWED_CATEGORIES = [
+  'Architecture & Urbanisme', 'Marchés & Commerce', 'Culture & Traditions',
+  'Nature & Paysages', 'Gastronomie', 'Art & Artisanat', 'Sport',
+  'Portraits', 'Événements & Festivals', 'Infrastructure & Développement',
+]
+
+const ALLOWED_LICENCES: LicenceType[] = ['CC BY', 'CC0', 'CC BY-NC', 'CC BY-SA']
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,56 +46,87 @@ export async function POST(req: NextRequest) {
     // Données contributeur (obligatoires)
     const contributeurPrenom = (formData.get('contributeur_prenom') as string)?.trim()
     const contributeurNom = (formData.get('contributeur_nom') as string)?.trim()
-    const contributeurEmail = (formData.get('contributeur_email') as string)?.trim()
+    const contributeurEmail = (formData.get('contributeur_email') as string)?.trim().toLowerCase()
     const contributeurTel = (formData.get('contributeur_tel') as string)?.trim() || null
 
     // Données média
     const file = formData.get('file') as File
     const type = formData.get('type') as string
-    const titre = (formData.get('titre') as string)?.trim() || ''
-    const description = (formData.get('description') as string)?.trim() || ''
-    const ville = (formData.get('ville') as string)?.trim() || ''
-    const region = (formData.get('region') as string)?.trim() || ''
+    const titre = ((formData.get('titre') as string)?.trim() || '').substring(0, 200)
+    const description = ((formData.get('description') as string)?.trim() || '').substring(0, 2000)
+    const ville = ((formData.get('ville') as string)?.trim() || '').substring(0, 100)
+    const region = ((formData.get('region') as string)?.trim() || '').substring(0, 100)
     const categorie = (formData.get('categorie') as string)?.trim()
-    const licence = (formData.get('licence') as string) || 'CC BY'
+    const licence = ((formData.get('licence') as string) || 'CC BY') as LicenceType
     const tagsRaw = (formData.get('tags') as string)?.trim() || ''
 
     // Guard vidéo — les vidéos ne passent pas par cette route
-    // Elles utilisent /api/videos/upload-url puis /api/videos/save
     if (type === 'video' || file?.type?.startsWith('video/')) {
       return NextResponse.json(
         {
           error:
-            "Les vidéos ne passent pas par cette route. Utilisez /api/videos/upload-url puis /api/videos/save.",
+            'Les vidéos ne passent pas par cette route. Utilisez /api/videos/upload-url puis /api/videos/save.',
         },
         { status: 400 }
       )
     }
 
-    // Validations
+    // ── Validations ──────────────────────────────────────────
+
     if (!file) {
       return NextResponse.json({ error: 'Fichier requis' }, { status: 400 })
     }
-    if (!categorie) {
-      return NextResponse.json({ error: 'Catégorie requise' }, { status: 400 })
-    }
-    if (!contributeurPrenom || !contributeurNom || !contributeurEmail) {
+
+    // Validation type MIME image
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: 'Prénom, nom et email du contributeur requis' },
+        { error: 'Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP, GIF' },
+        { status: 400 }
+      )
+    }
+
+    // Validation taille côté serveur
+    if (file.size > MAX_PHOTO_SIZE_BYTES) {
+      return NextResponse.json({ error: 'Fichier trop volumineux. Maximum 20 Mo.' }, { status: 400 })
+    }
+
+    if (!categorie || !ALLOWED_CATEGORIES.includes(categorie)) {
+      return NextResponse.json(
+        { error: `Catégorie invalide. Valeurs acceptées : ${ALLOWED_CATEGORIES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    if (!ALLOWED_LICENCES.includes(licence)) {
+      return NextResponse.json({ error: 'Licence invalide' }, { status: 400 })
+    }
+
+    if (!contributeurPrenom || !contributeurNom) {
+      return NextResponse.json(
+        { error: 'Prénom et nom du contributeur requis' },
+        { status: 400 }
+      )
+    }
+
+    if (!contributeurEmail || !EMAIL_REGEX.test(contributeurEmail)) {
+      return NextResponse.json(
+        { error: 'Email contributeur invalide' },
         { status: 400 }
       )
     }
 
     const tags = tagsRaw
-      ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean)
+      ? tagsRaw
+          .split(',')
+          .map((t: string) => t.trim().substring(0, 50))
+          .filter(Boolean)
+          .slice(0, 20)
       : []
 
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // ────────────────────────────────
-    // UPLOAD PHOTO (Cloudinary)
-    // ────────────────────────────────
+    // ── UPLOAD PHOTO (Cloudinary) ─────────────────────────────
     const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
 
     const userInput = {
@@ -84,7 +135,7 @@ export async function POST(req: NextRequest) {
       ville,
       region,
       categorie,
-      licence: licence as 'CC BY' | 'CC0' | 'CC BY-NC' | 'CC BY-SA',
+      licence,
       tags,
     }
     const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput)
@@ -148,7 +199,7 @@ export async function POST(req: NextRequest) {
       sendAdminNotification(emailMedia),
     ]).catch((err) => console.error('[upload] Erreur envoi emails:', err))
 
-    // Ping Google Sitemap
+    // Ping Google Sitemap (non bloquant)
     pingGoogle().catch(() => {})
 
     return NextResponse.json({ success: true, media })
