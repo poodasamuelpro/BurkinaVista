@@ -144,7 +144,7 @@ export default function AdminSidebar() {
   return (
     <>
       {/* Sidebar desktop (fixe) */}
-      <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-faso-dusk border-r border-white/5 p-4 flex-col z-40 pt-6">
+      <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-faso-dusk border-r border-white/5 p-4 flex-col z-40 pt-6 overflow-y-auto">
         <SidebarContent />
       </aside>
 
