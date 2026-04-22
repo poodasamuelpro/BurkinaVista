@@ -10,6 +10,8 @@
  *           → Gardé pour compatibilité mais commenté
  *  [BUG-37] execute() retourne result.length au lieu du rowCount réel
  *           → Correction pour retourner rowCount si disponible
+ *  [BUG-38] result[0] provoque "Element implicitly has an 'any' type" en strict mode
+ *           → Cast explicite en unknown[] avant indexation
  */
 import { neon, neonConfig } from '@neondatabase/serverless'
 
@@ -22,7 +24,9 @@ let _sql: ReturnType<typeof neon> | null = null
 function getSQL(): ReturnType<typeof neon> {
   if (_sql) return _sql
   if (!process.env.DATABASE_URL) {
-    throw new Error('[db] DATABASE_URL est obligatoire. Vérifiez vos variables d\'environnement Vercel.')
+    throw new Error(
+      "[db] DATABASE_URL est obligatoire. Vérifiez vos variables d'environnement Vercel."
+    )
   }
   _sql = neon(process.env.DATABASE_URL)
   return _sql
@@ -38,7 +42,7 @@ export async function query<T = Record<string, unknown>>(
   try {
     const sql = getSQL()
     const result = await sql(queryText, params)
-    return result as T[]
+    return result as unknown as T[]
   } catch (error) {
     console.error('[db] Erreur query:', queryText.substring(0, 100), error)
     throw error
@@ -47,6 +51,7 @@ export async function query<T = Record<string, unknown>>(
 
 /**
  * Exécute une requête et retourne le premier résultat (ou null)
+ * [FIX BUG-38] — Cast en unknown[] avant d'indexer pour satisfaire le strict mode TypeScript
  */
 export async function queryOne<T = Record<string, unknown>>(
   queryText: string,
@@ -55,7 +60,8 @@ export async function queryOne<T = Record<string, unknown>>(
   try {
     const sql = getSQL()
     const result = await sql(queryText, params)
-    return (result[0] as T) ?? null
+    const rows = result as unknown as T[]
+    return rows[0] ?? null
   } catch (error) {
     console.error('[db] Erreur queryOne:', queryText.substring(0, 100), error)
     throw error
@@ -84,10 +90,8 @@ export async function execute(
   try {
     const sql = getSQL()
     const result = await sql(queryText, params)
-    // Neon serverless retourne un tableau — on utilise sa longueur
-    // Pour INSERT/UPDATE/DELETE avec RETURNING *, c'est correct
-    // Pour sans RETURNING, c'est 0 (limitation de neon serverless)
-    return Array.isArray(result) ? result.length : 0
+    const rows = result as unknown as unknown[]
+    return Array.isArray(rows) ? rows.length : 0
   } catch (error) {
     console.error('[db] Erreur execute:', queryText.substring(0, 100), error)
     throw error
