@@ -28,6 +28,13 @@ export function getB2Client(): S3Client {
     // Backblaze B2 ne le supporte pas → cause ERR_FAILED sur le PUT
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
+    // ✅ FIX COMPLÉMENTAIRE — Désactive l'endpoint global AWS
+    // Évite que le SDK resolve vers des endpoints AWS au lieu de B2
+    useGlobalEndpoint: false,
+    // ✅ FIX COMPLÉMENTAIRE — Désactive la compression des requêtes
+    // La compression HTTP (Content-Encoding: gzip) est incompatible avec B2
+    // Seuil volontairement très élevé (10 GB) pour la désactiver en pratique
+    requestCompression: { requestMinCompressionSizeBytes: 10 * 1024 * 1024 * 1024 },
   })
 }
 
