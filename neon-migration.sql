@@ -1,6 +1,6 @@
 -- ============================================================
 -- BurkinaVista — Migration complète Neon PostgreSQL
--- Dernière mise à jour : sync avec DB réelle
+-- Dernière mise à jour : sync DB réelle + contraintes + indexes
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS contributeurs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nom TEXT NOT NULL,
   prenom TEXT NOT NULL,
-  email TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,  -- ✅ UNIQUE ajouté
   tel TEXT,
   medias_count INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -120,8 +120,15 @@ CREATE INDEX IF NOT EXISTS idx_medias_slug        ON medias(slug);
 CREATE INDEX IF NOT EXISTS idx_medias_created_at  ON medias(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_medias_type        ON medias(type);
 
-CREATE INDEX IF NOT EXISTS idx_medias_tags ON medias USING GIN(tags);
+-- ✅ Index composite — filtre statut=approved + tri created_at DESC (page d'accueil)
+CREATE INDEX IF NOT EXISTS idx_medias_statut_created
+  ON medias(statut, created_at DESC);
 
+-- Index GIN tags
+CREATE INDEX IF NOT EXISTS idx_medias_tags
+  ON medias USING GIN(tags);
+
+-- Index GIN full-text français
 CREATE INDEX IF NOT EXISTS idx_medias_fulltext ON medias
   USING GIN(to_tsvector('french',
     coalesce(titre, '') || ' ' ||
@@ -137,26 +144,26 @@ CREATE INDEX IF NOT EXISTS idx_abonnes_actif       ON abonnes(actif);
 -- DONNÉES PAR DÉFAUT: categories
 -- ============================================================
 INSERT INTO categories (nom, slug, description) VALUES
-  ('Architecture & Urbanisme',      'architecture-urbanisme',      'Bâtiments, monuments, villes et villages du Burkina Faso'),
-  ('Marchés & Commerce',            'marches-commerce',            'Marchés traditionnels, commerce et vie économique'),
-  ('Culture & Traditions',          'culture-traditions',          'Traditions, cérémonies, rites et coutumes burkinabè'),
-  ('Nature & Paysages',             'nature-paysages',             'Paysages, faune, flore et sites naturels du Burkina Faso'),
-  ('Gastronomie',                   'gastronomie',                 'Cuisine, plats traditionnels et gastronomie burkinabè'),
-  ('Art & Artisanat',               'art-artisanat',               'Artisanat, art contemporain et patrimoine artistique'),
-  ('Sport',                         'sport',                       'Sport, activités physiques et compétitions'),
-  ('Portraits',                     'portraits',                   'Portraits du peuple burkinabè dans sa diversité'),
-  ('Événements & Festivals',        'evenements-festivals',        'Fêtes, festivals, célébrations et événements culturels'),
-  ('Infrastructure & Développement','infrastructure-developpement','Projets de développement, routes, ponts et infrastructures')
+  ('Architecture & Urbanisme',       'architecture-urbanisme',       'Bâtiments, monuments, villes et villages du Burkina Faso'),
+  ('Marchés & Commerce',             'marches-commerce',             'Marchés traditionnels, commerce et vie économique'),
+  ('Culture & Traditions',           'culture-traditions',           'Traditions, cérémonies, rites et coutumes burkinabè'),
+  ('Nature & Paysages',              'nature-paysages',              'Paysages, faune, flore et sites naturels du Burkina Faso'),
+  ('Gastronomie',                    'gastronomie',                  'Cuisine, plats traditionnels et gastronomie burkinabè'),
+  ('Art & Artisanat',                'art-artisanat',                'Artisanat, art contemporain et patrimoine artistique'),
+  ('Sport',                          'sport',                        'Sport, activités physiques et compétitions'),
+  ('Portraits',                      'portraits',                    'Portraits du peuple burkinabè dans sa diversité'),
+  ('Événements & Festivals',         'evenements-festivals',         'Fêtes, festivals, célébrations et événements culturels'),
+  ('Infrastructure & Développement', 'infrastructure-developpement', 'Projets de développement, routes, ponts et infrastructures')
 ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================
 -- DONNÉES PAR DÉFAUT: admin_settings
 -- ============================================================
 INSERT INTO admin_settings (cle, valeur) VALUES
-  ('newsletter_auto',          'true'),
-  ('newsletter_jour',          'lundi'),
-  ('upload_photos_enabled',    'true'),
-  ('upload_videos_enabled',    'false')
+  ('newsletter_auto',       'true'),
+  ('newsletter_jour',       'lundi'),
+  ('upload_photos_enabled', 'true'),
+  ('upload_videos_enabled', 'false')
 ON CONFLICT (cle) DO NOTHING;
 
 -- ============================================================
