@@ -1,6 +1,10 @@
 /**
  * app/layout.tsx — Layout racine de BurkinaVista
  * Bilingue FR/EN + Dark/Light mode + Animations
+ *
+ * MODIFICATION (2026-04-22) :
+ *  - Navbar, Footer et FloatingLangSwitcher masqués sur toutes les pages /admin/*
+ *    via le composant PublicLayout (client, vérifie le pathname)
  */
 import type { Metadata } from 'next'
 import { Playfair_Display, DM_Sans } from 'next/font/google'
@@ -10,6 +14,7 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import Providers from '@/components/layout/Providers'
 import FloatingLangSwitcher from '@/components/ui/FloatingLangSwitcher'
+import PublicLayout from '@/components/layout/PublicLayout'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
 
@@ -53,13 +58,15 @@ export const metadata: Metadata = {
     url: 'https://burkina-vista.vercel.app',
     siteName: 'BurkinaVista',
     title: 'BurkinaVista — Bibliothèque Visuelle du Burkina Faso',
-    description: 'Photos et vidéos authentiques du Burkina Faso, libres de droits. | Authentic photos and videos from Burkina Faso, free to use.',
+    description:
+      'Photos et vidéos authentiques du Burkina Faso, libres de droits. | Authentic photos and videos from Burkina Faso, free to use.',
     images: [{ url: '/og-image.jpg', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'BurkinaVista',
-    description: 'Bibliothèque visuelle libre du Burkina Faso | Free visual library of Burkina Faso',
+    description:
+      'Bibliothèque visuelle libre du Burkina Faso | Free visual library of Burkina Faso',
   },
   robots: { index: true, follow: true },
   metadataBase: new URL(
@@ -80,17 +87,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="font-body antialiased transition-colors duration-300">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Providers locale={locale as 'fr' | 'en'}>
-            <Navbar />
+            {/* PublicLayout masque Navbar/Footer/FloatingLangSwitcher sur /admin/* */}
+            <PublicLayout>
+              <Navbar />
+              <FloatingLangSwitcher />
+            </PublicLayout>
+
             <main className="min-h-screen">{children}</main>
-            <Footer />
-            <FloatingLangSwitcher />
+
+            <PublicLayout>
+              <Footer />
+            </PublicLayout>
+
             <Toaster
               position="bottom-right"
               toastOptions={{
                 className: 'toast-custom',
-                style: {
-                  borderRadius: '12px',
-                },
+                style: { borderRadius: '12px' },
                 success: { iconTheme: { primary: '#009A00', secondary: '#fff' } },
                 error: { iconTheme: { primary: '#EF2B2D', secondary: '#fff' } },
               }}
