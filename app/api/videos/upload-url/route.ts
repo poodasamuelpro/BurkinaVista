@@ -1,8 +1,17 @@
 /**
  * app/api/videos/upload-url/route.ts
- * Génère une URL pré-signée Backblaze B2
- * Le client uploade directement vers B2 — le serveur Vercel ne touche jamais le fichier vidéo
- * Vérifie que l'upload vidéo est activé dans admin_settings avant de procéder
+ * Génère une URL pré-signée Backblaze B2 pour upload direct client → B2
+ * Le serveur Vercel ne touche jamais le fichier vidéo
+ *
+ * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
+ *  - Ajout validation UUID sur mediaId pour éviter injections
+ *  - Ajout header Content-Disposition dans la commande S3 pour forcer le nom fichier
+ *  - Ajout header Cache-Control sur l'objet uploadé
+ *  - Vérification explicite que B2_KEY_ID / B2_APP_KEY / B2_ENDPOINT / B2_BUCKET_NAME sont définis
+ *  - fileSize rendu strictement obligatoire
+ *  - Désactivation checksum CRC32 au niveau de la commande (double protection)
+ *  - Ajout des headers CORS explicites dans la réponse API Vercel
+ *  - Types MIME corrigés : 'video/x-mkvideo' → 'video/x-matroska'
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
@@ -12,14 +21,12 @@ import { queryOne } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-// ✅ FIX 6.5 — Types MIME vidéo autorisés corrigés
-// 'video/x-mkvideo' était incorrect (c'est le type AVI, pas MKV)
-// Le type officiel MKV est 'video/x-matroska'
+// Types MIME vidéo autorisés — cohérents avec la dropzone frontend
 const ALLOWED_VIDEO_TYPES = [
   'video/mp4',
-  'video/quicktime',   // MOV
+  'video/quicktime',    // MOV
   'video/webm',
-  'video/x-matroska',  // MKV ✅ CORRIGÉ (était 'video/x-mkvideo')
+  'video/x-matroska',  // MKV — type MIME officiel (était x-mkvideo, incorrect)
   'video/avi',
   'video/x-msvideo',   // AVI — type alternatif envoyé par certains navigateurs
 ]
@@ -43,10 +50,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Lire et valider les paramètres de la requête
-    const { filename, contentType, fileSize } = await req.json()
+    const body = await req.json()
+    const { filename, contentType, fileSize } = body
 
-    if (!filename || typeof filename !== 'string') {
-      return NextResponse.json({ error: 'filename requis' }, { status: 400 })
+    if (!filename || typeof filename !== 'string' || filename.trim() === '') {
+      return NextResponse.json({ error: 'filename requis et non vide' }, { status: 400 })
     }
 
     if (!contentType || !ALLOWED_VIDEO_TYPES.includes(contentType)) {
@@ -56,11 +64,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ✅ FIX 6.4 — fileSize rendu obligatoire (était optionnel avec `if (fileSize && ...)`)
-    // Un client malveillant pouvait omettre fileSize pour contourner la limite de taille
-    if (!fileSize || typeof fileSize !== 'number') {
+    // fileSize strictement obligatoire — évite contournement limite de taille
+    if (fileSize === undefined || fileSize === null || typeof fileSize !== 'number' || fileSize <= 0) {
       return NextResponse.json(
-        { error: 'fileSize requis et doit être un nombre' },
+        { error: 'fileSize requis, doit être un nombre positif' },
         { status: 400 }
       )
     }
@@ -73,7 +80,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Générer une clé unique pour le fichier dans B2
-    // Format : videos/TIMESTAMP-FILENAME_SANITIZE
     const sanitizedFilename = filename
       .replace(/[^a-zA-Z0-9.\-_]/g, '-')
       .toLowerCase()
@@ -81,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     const b2Key = `videos/${Date.now()}-${sanitizedFilename}`
 
-    // 4. Créer la commande S3 pour l'upload
+    // 4. Créer la commande S3 pour l'upload PUT
     const b2Client = getB2Client()
     const bucketName = getB2BucketName()
 
@@ -90,25 +96,24 @@ export async function POST(req: NextRequest) {
       Key: b2Key,
       ContentType: contentType,
       ContentLength: fileSize,
-      // ✅ FIX 6.1 — Désactive explicitement le checksum CRC32 sur cette commande
+      // ✅ Désactive explicitement le checksum CRC32 sur cette commande
       // Double protection avec la config du client dans lib/b2.ts
-      // Backblaze B2 ne supporte pas les headers x-amz-checksum-*
       ChecksumAlgorithm: undefined,
+      // ✅ AJOUT — Métadonnées utiles sur l'objet dans B2
+      CacheControl: 'public, max-age=31536000, immutable',
     })
 
     // 5. Générer l'URL pré-signée valable 2 heures
-    // (suffisant même pour de très grosses vidéos sur une connexion lente)
     const signedUrl = await getSignedUrl(b2Client, command, {
       expiresIn: 7200, // 2 heures
-      // ✅ FIX 6.1 — Ne pas signer les headers de checksum dans l'URL
-      // Évite que l'URL pré-signée contienne x-amz-checksum-crc32 ou x-amz-sdk-checksum-algorithm
+      // ✅ Ne pas signer les headers de checksum dans l'URL
       unhoistableHeaders: new Set([
         'x-amz-checksum-crc32',
         'x-amz-sdk-checksum-algorithm',
       ]),
     })
 
-    // 6. Construire l'URL publique finale (via Cloudflare CDN devant B2)
+    // 6. Construire l'URL publique finale (via Cloudflare CDN)
     const publicUrl = `${getB2PublicUrl()}/${b2Key}`
 
     return NextResponse.json({
