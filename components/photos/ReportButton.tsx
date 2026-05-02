@@ -2,34 +2,12 @@
 /**
  * components/photos/ReportButton.tsx
  *
- * AJOUT (Audit 2026-05-01) — Item #14 :
- *  Bouton "Signaler" affiché sur la page détail d'un média (PhotoDetailClient).
- *  Ouvre un petit dialogue inline (pas de modale lourde) avec :
- *    - Liste de motifs prédéfinis (radio)
- *    - Message libre (optionnel, max 1000 caractères)
- *    - Email optionnel (pour suivi)
- *    - Widget Cloudflare Turnstile (chargé uniquement si NEXT_PUBLIC_TURNSTILE_SITE_KEY défini)
- *  POSTe vers /api/report.
- *
- *  Composant 100% bilingue via next-intl (clés sous "report.*").
- *
- *  CORRECTION (2026-05-02) :
- *  Alignement des clés t() avec les clés réelles dans fr.json / en.json.
- *  Clés corrigées :
- *    button_label  → button
- *    button_title  → button  (réutilisé comme title attribute)
- *    panel_title   → title
- *    panel_subtitle → subtitle
- *    close         → cancel  (réutilisé)
- *    success_toast → success_title
- *    error_network → error_generic
- *    field_reason  → reason_label
- *    field_message → message_label
- *    field_message_placeholder → message_placeholder
- *    field_email   → email_label
- *    optional      → (chaîne inline)
- *    success_msg   → success_desc
- *    legal_hint    → legal_notice
+ * CORRECTION (2026-05-02) — Option C :
+ *  - Email OBLIGATOIRE pour motifs `copyright` et `illegal` (conséquences légales)
+ *  - Email OPTIONNEL pour tous les autres motifs
+ *  - Message contextuel sous le champ email selon le motif sélectionné
+ *  - Validation côté client bloquant le submit si email manquant sur motifs critiques
+ *  - Les clés i18n utilisées sont alignées avec fr.json / en.json
  */
 import { useEffect, useState, useRef } from 'react'
 import { Flag, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react'
@@ -42,6 +20,9 @@ interface Props {
 
 const REASONS = ['inappropriate', 'copyright', 'incorrect_info', 'spam', 'illegal', 'other'] as const
 type Reason = typeof REASONS[number]
+
+/** Motifs pour lesquels l'email devient obligatoire */
+const EMAIL_REQUIRED_REASONS: Reason[] = ['copyright', 'illegal']
 
 declare global {
   interface Window {
@@ -62,11 +43,19 @@ export default function ReportButton({ mediaId }: Props) {
   const [reason, setReason] = useState<Reason>('inappropriate')
   const [message, setMessage] = useState('')
   const [email, setEmail] = useState('')
+  const [emailError, setEmailError] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null)
   const turnstileWidgetIdRef = useRef<string | null>(null)
+
+  const isEmailRequired = EMAIL_REQUIRED_REASONS.includes(reason)
+
+  // Reset emailError quand le motif change
+  useEffect(() => {
+    setEmailError('')
+  }, [reason])
 
   // Chargement script Turnstile
   useEffect(() => {
@@ -120,14 +109,42 @@ export default function ReportButton({ mediaId }: Props) {
     setReason('inappropriate')
     setMessage('')
     setEmail('')
+    setEmailError('')
     setStatus('idle')
     setErrorMsg('')
     setTurnstileToken(null)
   }
 
+  const validateEmail = (val: string): boolean => {
+    if (!isEmailRequired) return true
+    if (!val.trim()) {
+      setEmailError(t('email_required_notice'))
+      return false
+    }
+    // Validation basique format email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(val.trim())) {
+      setEmailError(t('email_invalid'))
+      return false
+    }
+    setEmailError('')
+    return true
+  }
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value)
+    if (emailError) {
+      // Re-valider à la volée si l'utilisateur corrige
+      if (e.target.value.trim()) setEmailError('')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (status === 'loading') return
+
+    // Validation client : email obligatoire pour motifs critiques
+    if (!validateEmail(email)) return
 
     setStatus('loading')
     setErrorMsg('')
@@ -160,6 +177,12 @@ export default function ReportButton({ mediaId }: Props) {
       setErrorMsg(t('error_generic'))
     }
   }
+
+  // Détermine si le bouton submit doit être désactivé
+  const isSubmitDisabled =
+    status === 'loading' ||
+    (TURNSTILE_ENABLED && !turnstileToken) ||
+    (isEmailRequired && !email.trim())
 
   if (!open) {
     return (
@@ -200,6 +223,7 @@ export default function ReportButton({ mediaId }: Props) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Motifs */}
           <div>
             <label className="block text-xs text-white/60 mb-2">{t('reason_label')}</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -207,7 +231,9 @@ export default function ReportButton({ mediaId }: Props) {
                 <label
                   key={r}
                   className={`flex items-center gap-2 p-2 rounded-md cursor-pointer text-xs transition-all ${
-                    reason === r ? 'bg-faso-red/10 border border-faso-red/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
+                    reason === r
+                      ? 'bg-faso-red/10 border border-faso-red/30'
+                      : 'bg-white/5 border border-transparent hover:bg-white/10'
                   }`}
                 >
                   <input
@@ -224,9 +250,10 @@ export default function ReportButton({ mediaId }: Props) {
             </div>
           </div>
 
+          {/* Message libre */}
           <div>
             <label className="block text-xs text-white/60 mb-2">
-              {t('message_label')} <span className="text-white/30">({t('email_placeholder').includes('@') ? 'optionnel' : t('message_placeholder')})</span>
+              {t('message_label')}
             </label>
             <textarea
               value={message}
@@ -239,25 +266,49 @@ export default function ReportButton({ mediaId }: Props) {
             <p className="text-[10px] text-white/30 mt-1 text-right">{message.length}/1000</p>
           </div>
 
+          {/* Email — obligatoire ou optionnel selon le motif */}
           <div>
             <label className="block text-xs text-white/60 mb-2">
               {t('email_label')}
+              {isEmailRequired ? (
+                <span className="ml-1 text-faso-red font-medium">*</span>
+              ) : (
+                <span className="ml-1 text-white/30">({t('optional')})</span>
+              )}
             </label>
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
+              onBlur={() => validateEmail(email)}
               placeholder={t('email_placeholder')}
-              className="input-field text-sm"
+              required={isEmailRequired}
+              className={`input-field text-sm ${emailError ? 'border-faso-red/60' : ''}`}
             />
+
+            {/* Message contextuel selon motif */}
+            {isEmailRequired && !emailError && (
+              <p className="text-[10px] text-amber-400/80 mt-1 flex items-start gap-1">
+                <AlertCircle size={10} className="flex-shrink-0 mt-0.5" />
+                {t('email_legal_notice')}
+              </p>
+            )}
+            {emailError && (
+              <p className="text-[10px] text-faso-red mt-1">{emailError}</p>
+            )}
+            {!isEmailRequired && !emailError && (
+              <p className="text-[10px] text-white/30 mt-1">{t('email_optional_notice')}</p>
+            )}
           </div>
 
+          {/* Turnstile */}
           {TURNSTILE_ENABLED && (
             <div className="flex justify-center">
               <div ref={turnstileContainerRef} />
             </div>
           )}
 
+          {/* Erreur serveur */}
           {status === 'error' && (
             <div className="flex items-start gap-2 p-3 rounded-lg bg-faso-red/10 border border-faso-red/20">
               <AlertCircle size={14} className="text-faso-red flex-shrink-0 mt-0.5" />
@@ -265,10 +316,11 @@ export default function ReportButton({ mediaId }: Props) {
             </div>
           )}
 
+          {/* Actions */}
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={status === 'loading' || (TURNSTILE_ENABLED && !turnstileToken)}
+              disabled={isSubmitDisabled}
               className="btn-primary flex-1 justify-center py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {status === 'loading' ? (
