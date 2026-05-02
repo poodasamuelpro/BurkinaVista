@@ -11,6 +11,9 @@
  *   - Validation stricte : UUID média, motif borné, message borné, email optionnel
  *   - Stockage dans media_reports (migration neon-migration.sql)
  *   - Réponse neutre (200 même si déjà signalé) pour ne pas leak l'état
+ *
+ * CORRECTION (2026-05-02) — Option C :
+ *   - Email obligatoire côté serveur pour les motifs `copyright` et `illegal`
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
@@ -29,6 +32,9 @@ const ALLOWED_REASONS = [
   'illegal',        // Contenu illégal
   'other',          // Autre motif (préciser dans message)
 ] as const
+
+/** Motifs pour lesquels l'email est obligatoire */
+const EMAIL_REQUIRED_REASONS: string[] = ['copyright', 'illegal']
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -85,6 +91,14 @@ export async function POST(req: NextRequest) {
     if (email && (typeof email !== 'string' || !EMAIL_REGEX.test(email))) {
       return NextResponse.json(
         { error: 'Email invalide' },
+        { status: 400, headers: rateLimitHeaders(rl) }
+      )
+    }
+
+    // Option C — Email obligatoire pour motifs à portée légale
+    if (EMAIL_REQUIRED_REASONS.includes(reason ?? '') && (!email || !EMAIL_REGEX.test(email))) {
+      return NextResponse.json(
+        { error: 'Email obligatoire pour ce type de signalement.' },
         { status: 400, headers: rateLimitHeaders(rl) }
       )
     }
