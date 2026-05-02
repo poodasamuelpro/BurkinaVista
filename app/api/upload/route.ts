@@ -18,6 +18,12 @@
  *          AVANT upload Cloudinary, pour protéger la vie privée du contributeur.
  *  [UP-05] Scan antivirus best-effort via VirusTotal (timeout 3s, non bloquant
  *          en cas d'erreur, blocage uniquement si ≥3 moteurs détectent un malware).
+ *
+ * FIX 2026-05-02 :
+ *  [UP-06] Buffer.from(arrayBuffer as ArrayBuffer) — résout l'erreur TypeScript
+ *          "Type 'Buffer<ArrayBufferLike>' is not assignable to type 'Buffer<ArrayBuffer>'"
+ *          car file.arrayBuffer() retourne Promise<ArrayBuffer | SharedArrayBuffer>
+ *          mais en pratique ne retourne jamais un SharedArrayBuffer côté File API.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
@@ -179,8 +185,11 @@ export async function POST(req: NextRequest) {
           .slice(0, 20)
       : []
 
+    // [UP-06] Cast explicite en ArrayBuffer pour satisfaire TypeScript strict.
+    // file.arrayBuffer() retourne ArrayBuffer | SharedArrayBuffer (ArrayBufferLike)
+    // mais la File API Web ne produit jamais un SharedArrayBuffer ici.
     const arrayBuffer = await file.arrayBuffer()
-    let buffer = Buffer.from(arrayBuffer)
+    let buffer = Buffer.from(arrayBuffer as ArrayBuffer)
 
     // [UP-03] Vérification magic bytes
     if (!verifyMagicBytes(buffer, file.type)) {
