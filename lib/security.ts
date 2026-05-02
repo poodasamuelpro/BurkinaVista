@@ -12,6 +12,14 @@
  *  - stripExifFromImage() : suppression des métadonnées EXIF des images via
  *    sharp (déjà inclus en dépendance) — protège la vie privée des contributeurs
  *    (géolocalisation, modèle d'appareil…).
+ *
+ * FIX 2026-05-02 :
+ *  - Signature de stripExifFromImage() mise à jour :
+ *    buffer: Buffer → buffer: Buffer<ArrayBuffer>
+ *    Promise<Buffer> → Promise<Buffer<ArrayBuffer>>
+ *    Résout l'erreur TypeScript strict "Type 'Buffer<ArrayBufferLike>' is not
+ *    assignable to type 'Buffer<ArrayBuffer>'" lors du réassignement dans
+ *    app/api/upload/route.ts.
  */
 
 import sharp from 'sharp'
@@ -186,13 +194,16 @@ export function verifyMagicBytes(
  * Si le format n'est pas reconnu par sharp ou en cas d'erreur, on retourne
  * le buffer original (failsafe pour ne pas bloquer un upload légitime).
  *
+ * FIX 2026-05-02 : signature mise à jour Buffer<ArrayBuffer> pour compatibilité
+ * TypeScript strict avec route.ts (évite l'erreur ArrayBufferLike).
+ *
  * @param buffer Image source
  * @param mimeType Type MIME (utilisé pour préserver le format de sortie)
  */
 export async function stripExifFromImage(
-  buffer: Buffer,
+  buffer: Buffer<ArrayBuffer>,
   mimeType: string
-): Promise<Buffer> {
+): Promise<Buffer<ArrayBuffer>> {
   try {
     // sharp ne supporte pas le GIF animé → on conserve l'original
     if (mimeType === 'image/gif') return buffer
@@ -211,7 +222,7 @@ export async function stripExifFromImage(
 
     // .toBuffer() avec withMetadata({}) NON appelé → toutes métadonnées EXIF/XMP supprimées
     const cleaned = await pipeline.toBuffer()
-    return cleaned
+    return cleaned as Buffer<ArrayBuffer>
   } catch (error) {
     console.error('[security] Erreur stripExif (failsafe → original):', error)
     return buffer
