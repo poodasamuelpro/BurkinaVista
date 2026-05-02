@@ -12,6 +12,24 @@
  *  POSTe vers /api/report.
  *
  *  Composant 100% bilingue via next-intl (clés sous "report.*").
+ *
+ *  CORRECTION (2026-05-02) :
+ *  Alignement des clés t() avec les clés réelles dans fr.json / en.json.
+ *  Clés corrigées :
+ *    button_label  → button
+ *    button_title  → button  (réutilisé comme title attribute)
+ *    panel_title   → title
+ *    panel_subtitle → subtitle
+ *    close         → cancel  (réutilisé)
+ *    success_toast → success_title
+ *    error_network → error_generic
+ *    field_reason  → reason_label
+ *    field_message → message_label
+ *    field_message_placeholder → message_placeholder
+ *    field_email   → email_label
+ *    optional      → (chaîne inline)
+ *    success_msg   → success_desc
+ *    legal_hint    → legal_notice
  */
 import { useEffect, useState, useRef } from 'react'
 import { Flag, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react'
@@ -135,11 +153,11 @@ export default function ReportButton({ mediaId }: Props) {
         return
       }
       setStatus('success')
-      toast.success(t('success_toast'))
+      toast.success(t('success_title'))
       setTimeout(() => { setOpen(false); reset() }, 1800)
     } catch {
       setStatus('error')
-      setErrorMsg(t('error_network'))
+      setErrorMsg(t('error_generic'))
     }
   }
 
@@ -148,10 +166,10 @@ export default function ReportButton({ mediaId }: Props) {
       <button
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-2 text-xs text-white/40 hover:text-faso-red transition-colors"
-        title={t('button_title')}
+        title={t('button')}
       >
         <Flag size={13} />
-        {t('button_label')}
+        {t('button')}
       </button>
     )
   }
@@ -162,14 +180,14 @@ export default function ReportButton({ mediaId }: Props) {
         <div>
           <h3 className="text-base font-medium text-white flex items-center gap-2">
             <Flag size={15} className="text-faso-red" />
-            {t('panel_title')}
+            {t('title')}
           </h3>
-          <p className="text-xs text-white/50 mt-1">{t('panel_subtitle')}</p>
+          <p className="text-xs text-white/50 mt-1">{t('subtitle')}</p>
         </div>
         <button
           onClick={() => { setOpen(false); reset() }}
           className="text-white/40 hover:text-white transition-colors"
-          aria-label={t('close')}
+          aria-label={t('cancel')}
         >
           <X size={18} />
         </button>
@@ -178,12 +196,12 @@ export default function ReportButton({ mediaId }: Props) {
       {status === 'success' ? (
         <div className="text-center py-6">
           <CheckCircle size={32} className="text-faso-green mx-auto mb-2" />
-          <p className="text-sm text-white/70">{t('success_msg')}</p>
+          <p className="text-sm text-white/70">{t('success_desc')}</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs text-white/60 mb-2">{t('field_reason')}</label>
+            <label className="block text-xs text-white/60 mb-2">{t('reason_label')}</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {REASONS.map((r) => (
                 <label
@@ -208,14 +226,14 @@ export default function ReportButton({ mediaId }: Props) {
 
           <div>
             <label className="block text-xs text-white/60 mb-2">
-              {t('field_message')} <span className="text-white/30">{t('optional')}</span>
+              {t('message_label')} <span className="text-white/30">({t('email_placeholder').includes('@') ? 'optionnel' : t('message_placeholder')})</span>
             </label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value.slice(0, 1000))}
               maxLength={1000}
               rows={3}
-              placeholder={t('field_message_placeholder')}
+              placeholder={t('message_placeholder')}
               className="input-field text-sm resize-none"
             />
             <p className="text-[10px] text-white/30 mt-1 text-right">{message.length}/1000</p>
@@ -223,13 +241,13 @@ export default function ReportButton({ mediaId }: Props) {
 
           <div>
             <label className="block text-xs text-white/60 mb-2">
-              {t('field_email')} <span className="text-white/30">{t('optional')}</span>
+              {t('email_label')}
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="votre@email.com"
+              placeholder={t('email_placeholder')}
               className="input-field text-sm"
             />
           </div>
@@ -269,7 +287,7 @@ export default function ReportButton({ mediaId }: Props) {
           </div>
 
           <p className="text-[10px] text-white/30 text-center">
-            {t('legal_hint')}
+            {t('legal_notice')}
           </p>
         </form>
       )}
