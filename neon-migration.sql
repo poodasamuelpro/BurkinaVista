@@ -1,17 +1,6 @@
 -- ============================================================
 -- BurkinaVista — Migration complète Neon PostgreSQL
--- VERSION FINALE VALIDÉE — Audit comparatif 2026-04-22
--- ============================================================
--- SOURCE : Fusion AUDIT original + corrections générées
--- VAINQUEUR par fichier :
---   - Generated corrections (burkinavista-corrections/) :
---     + Plus de contraintes CHECK (slug, titre, description, categorie, ville, région)
---     + CHECK source IN ('dashboard','email_link','api') sur moderation_logs
---     + Index composite type+statut (idx_medias_type_statut)
---     + ip_address INET (type correct vs TEXT de l'AUDIT)
---     + CORS B2 rappel complet avec etag exposé
---   - AUDIT original (BurkinaVista_AUDIT/) :
---     → Structure identique avec moins de CHECK → remplacé par generated
+-- VERSION FINALE VALIDÉE — Fusion Audit 2026-04-22 + Patch 2026-05-02
 -- ============================================================
 -- CORRECTIONS APPLIQUÉES :
 --   [SQL-01] ip_address INET sur medias (anti-spam, RGPD-friendly)
@@ -29,6 +18,8 @@
 --   [SQL-13] CHECK catégorie parmi valeurs autorisées
 --   [SQL-14] CHECK source moderation_logs IN ('dashboard','email_link','api')
 --   [SQL-15] Index composite type+statut WHERE statut='approved'
+--   [SQL-16] Table media_reports — signalement communautaire (Audit 2026-05-01)
+--   [SQL-17] rejection_reason sur medias (colonne additive)
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -95,6 +86,7 @@ CREATE TABLE IF NOT EXISTS medias (
   contributeur_tel TEXT,
 
   -- Modération
+  -- [SQL-17] Raison de rejet (patch 2026-05-02)
   rejection_reason TEXT,
 
   -- Méta
@@ -172,7 +164,8 @@ CREATE TABLE IF NOT EXISTS admin_settings (
 );
 
 -- ============================================================
--- TABLE: moderation_logs — [SQL-08] NOUVEAU
+-- TABLE: moderation_logs — [SQL-08]
+-- Audit des actions de modération admin sur les médias
 -- ============================================================
 CREATE TABLE IF NOT EXISTS moderation_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -185,7 +178,7 @@ CREATE TABLE IF NOT EXISTS moderation_logs (
 );
 
 -- ============================================================
--- TABLE: media_reports — [REPORT-01] NOUVEAU (Audit 2026-05-01, Item #14)
+-- TABLE: media_reports — [SQL-16]
 -- Système de modération communautaire : signalement public d'un média
 -- ============================================================
 CREATE TABLE IF NOT EXISTS media_reports (
@@ -204,12 +197,8 @@ CREATE TABLE IF NOT EXISTS media_reports (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_reports_media_id ON media_reports(media_id);
-CREATE INDEX IF NOT EXISTS idx_media_reports_status   ON media_reports(status);
-CREATE INDEX IF NOT EXISTS idx_media_reports_created  ON media_reports(created_at DESC);
-
 -- ============================================================
--- INDEXES
+-- INDEXES — medias
 -- ============================================================
 
 -- Index simples
@@ -247,7 +236,10 @@ CREATE INDEX IF NOT EXISTS idx_medias_fulltext ON medias
     coalesce(ville, '')
   ));
 
--- Indexes tables secondaires
+-- ============================================================
+-- INDEXES — tables secondaires
+-- ============================================================
+
 CREATE INDEX IF NOT EXISTS idx_contributeurs_email ON contributeurs(email);
 CREATE INDEX IF NOT EXISTS idx_abonnes_email       ON abonnes(email);
 CREATE INDEX IF NOT EXISTS idx_abonnes_actif       ON abonnes(actif);
@@ -255,6 +247,11 @@ CREATE INDEX IF NOT EXISTS idx_abonnes_actif       ON abonnes(actif);
 -- [SQL-08] Indexes moderation_logs
 CREATE INDEX IF NOT EXISTS idx_moderation_logs_media_id ON moderation_logs(media_id);
 CREATE INDEX IF NOT EXISTS idx_moderation_logs_created  ON moderation_logs(created_at DESC);
+
+-- [SQL-16] Indexes media_reports
+CREATE INDEX IF NOT EXISTS idx_media_reports_media_id ON media_reports(media_id);
+CREATE INDEX IF NOT EXISTS idx_media_reports_status   ON media_reports(status);
+CREATE INDEX IF NOT EXISTS idx_media_reports_created  ON media_reports(created_at DESC);
 
 -- ============================================================
 -- DONNÉES PAR DÉFAUT: categories
@@ -306,7 +303,7 @@ CREATE OR REPLACE TRIGGER update_admin_settings_updated_at
 
 -- ============================================================
 -- MIGRATION ADDITIVE — Si la base EXISTE DÉJÀ
--- Exécuter ces ALTER TABLE si les tables ont déjà été créées sans ces colonnes
+-- Décommenter et exécuter uniquement les lignes manquantes
 -- ============================================================
 -- ALTER TABLE medias ADD COLUMN IF NOT EXISTS file_size BIGINT;
 -- ALTER TABLE medias ADD COLUMN IF NOT EXISTS original_filename TEXT;
