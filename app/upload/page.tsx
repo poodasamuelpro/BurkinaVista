@@ -21,7 +21,7 @@
  *  - 6.7 : État activeTab mort supprimé — soumission photo et vidéo ne partagent
  *          plus le même état status ; les boutons se désactivent mutuellement
  */
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -70,13 +70,60 @@ export default function UploadPage() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   useEffect(() => {
-    fetch('/api/admin/upload-settings')
+    // [SETTINGS-01] L'endpoint /api/admin/upload-settings est désormais admin-only.
+    // L'endpoint public read-only /api/upload-settings expose uniquement les 2
+    // toggles nécessaires côté client.
+    fetch('/api/upload-settings')
       .then((r) => r.json())
       .then((data) => {
         setUploadSettings(data)
         setSettingsLoaded(true)
       })
       .catch(() => setSettingsLoaded(true))
+  }, [])
+
+  // [UP-02] Cloudflare Turnstile — chargement conditionnel
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null)
+  const turnstileWidgetIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    if (!SITE_KEY || typeof window === 'undefined') return
+    const SCRIPT_ID = 'cf-turnstile-script'
+    if (!document.getElementById(SCRIPT_ID)) {
+      const s = document.createElement('script')
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+      s.async = true; s.defer = true; s.id = SCRIPT_ID
+      document.head.appendChild(s)
+    }
+    const tryRender = () => {
+      const w = window as any
+      if (!w.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) return
+      try {
+        const id = w.turnstile.render(turnstileContainerRef.current, {
+          sitekey: SITE_KEY,
+          theme: 'dark',
+          size: 'flexible',
+          callback: (token: string) => setTurnstileToken(token),
+          'error-callback': () => setTurnstileToken(null),
+          'expired-callback': () => setTurnstileToken(null),
+        })
+        turnstileWidgetIdRef.current = id
+      } catch (err) {
+        console.error('[Turnstile] render error:', err)
+      }
+    }
+    const interval = setInterval(() => {
+      if ((window as any).turnstile) { clearInterval(interval); tryRender() }
+    }, 200)
+    return () => {
+      clearInterval(interval)
+      const w = window as any
+      if (w.turnstile && turnstileWidgetIdRef.current) {
+        try { w.turnstile.remove(turnstileWidgetIdRef.current) } catch {}
+        turnstileWidgetIdRef.current = null
+      }
+    }
   }, [])
 
   // ── État images ──
@@ -216,12 +263,18 @@ export default function UploadPage() {
       formData.append('categorie', categorie)
       formData.append('licence', licence)
       formData.append('tags', tags)
+      // [UP-02] Inclure le token Turnstile (silencieux si non configuré)
+      if (turnstileToken) formData.append('turnstileToken', turnstileToken)
 
       try {
         setPhotoStatus('processing')
         setPhotoProgress(60 + Math.round((i / photoFiles.length) * 35))
 
-        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          headers: turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
+        })
 
         if (!res.ok) {
           const data = await res.json()
@@ -257,11 +310,15 @@ export default function UploadPage() {
       // Étape 1 — Obtenir l'URL pré-signée Backblaze B2
       const urlRes = await fetch('/api/videos/upload-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}),
+        },
         body: JSON.stringify({
           filename: videoFile.file.name,
           contentType: videoFile.file.type,
           fileSize: videoFile.file.size,
+          turnstileToken,
         }),
       })
 
@@ -321,7 +378,10 @@ export default function UploadPage() {
       // Étape 3 — Sauvegarder les métadonnées dans Neon
       const saveRes = await fetch('/api/videos/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}),
+        },
         body: JSON.stringify({
           b2Url: publicUrl,
           b2Key,
@@ -336,6 +396,7 @@ export default function UploadPage() {
           categorie,
           licence,
           tags,
+          turnstileToken,
         }),
       })
 
@@ -919,6 +980,13 @@ export default function UploadPage() {
                 Le bouton photo est disabled si la vidéo est en cours (et vice versa)
                 Évite les double-soumissions et les états partagés corrompus
             ════════════════════════════════════════════════ */}
+
+            {/* [UP-02] Cloudflare Turnstile — ne s'affiche que si configuré */}
+            {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+              <div className="flex justify-center my-4">
+                <div ref={turnstileContainerRef} className="cf-turnstile" />
+              </div>
+            )}
 
             {/* Bouton photos */}
             {uploadSettings.upload_photos_enabled && photoFiles.length > 0 && (

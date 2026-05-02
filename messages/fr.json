@@ -264,5 +264,34 @@
   },
   "lang": {
     "switch": "EN"
+  },
+  "report": {
+    "button": "Signaler",
+    "title": "Signaler ce média",
+    "subtitle": "Aidez-nous à modérer le contenu de la plateforme",
+    "reason_label": "Motif du signalement",
+    "reason_inappropriate": "Contenu inapproprié",
+    "reason_copyright": "Atteinte au droit d'auteur",
+    "reason_incorrect_info": "Informations erronées",
+    "reason_spam": "Spam ou publicité",
+    "reason_illegal": "Contenu illégal",
+    "reason_other": "Autre motif",
+    "message_label": "Message (optionnel)",
+    "message_placeholder": "Décrivez brièvement le problème (1000 caractères max)",
+    "email_label": "Votre email (optionnel)",
+    "email_placeholder": "Pour recevoir un suivi du signalement",
+    "submit": "Envoyer le signalement",
+    "submitting": "Envoi en cours…",
+    "success_title": "Merci pour votre signalement",
+    "success_desc": "Notre équipe examinera ce contenu sous 48 h.",
+    "error_generic": "Échec de l'envoi. Veuillez réessayer.",
+    "cancel": "Annuler",
+    "legal_notice": "Les signalements abusifs ou répétés peuvent être bloqués. Vos données sont conservées uniquement à des fins de modération conformément à notre politique de confidentialité."
+  },
+  "legal": {
+    "moderation_title": "Modération communautaire",
+    "moderation_desc": "BurkinaVista s'appuie sur des signalements communautaires pour garantir un contenu respectueux. Tout média signalé pour motif valide est examiné sous 48 h. L'équipe de modération peut retirer le média, demander des corrections au contributeur, ou rejeter le signalement.",
+    "data_retention": "Les emails et IP des signaleurs sont conservés 12 mois maximum.",
+    "abuse_notice": "Tout signalement abusif ou frauduleux peut entraîner un bannissement IP."
   }
 }

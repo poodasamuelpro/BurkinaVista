@@ -5,3 +5,11 @@ node_modules/
 out/
 *.log
 .DS_Store
+# [LOW-06] TypeScript build cache
+tsconfig.tsbuildinfo
+# Backups & archives
+*.tar.gz
+*.zip
+# IDE
+.vscode/
+.idea/

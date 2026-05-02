@@ -6,6 +6,17 @@
  *
  * Pour les vidéos : generateSEOFromText() — pas d'analyse IA de la vidéo,
  * uniquement basé sur les informations saisies par le contributeur.
+ *
+ * AUDIT 2026-05-01 — CORRECTIONS APPLIQUÉES :
+ *  [AI-SEO-01] Aucun timeout sur l'appel Gemini → l'upload pouvait rester bloqué
+ *              indéfiniment si Gemini ne répondait pas. Ajout d'un timeout
+ *              configurable (par défaut 12s) via AbortController. Le download de
+ *              l'image source a aussi un timeout (5s) pour éviter de bloquer.
+ *              En cas de timeout ou d'erreur, on passe par generateFallbackSEO()
+ *              avec les données saisies par l'utilisateur — la contribution est
+ *              donc TOUJOURS publiée, même si l'IA est indisponible.
+ *  [AI-SEO-02] Les variables d'environnement permettent de tuner les timeouts en
+ *              production sans redéploiement (GEMINI_TIMEOUT_MS / IMAGE_FETCH_TIMEOUT_MS).
  */
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import slugify from 'slugify'
@@ -14,9 +25,32 @@ import type { SEOData, UploadFormData } from '@/types'
 // Initialisation Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
+/** Timeouts par défaut (modifiables via env) */
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 12_000      // 12 s
+const IMAGE_FETCH_TIMEOUT_MS = Number(process.env.IMAGE_FETCH_TIMEOUT_MS) || 5_000 // 5 s
+
+/**
+ * Helper : exécute une promesse avec un timeout strict.
+ * Si le timeout expire, rejette avec une erreur explicite.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`[ai-seo] Timeout ${label} après ${ms}ms`))
+    }, ms)
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) }
+    )
+  })
+}
+
 /**
  * Génère des métadonnées SEO bilingues (FR + EN) à partir d'une image via Gemini Vision
- * Respecte les règles strictes d'authenticité
+ * Respecte les règles strictes d'authenticité.
+ *
+ * [AI-SEO-01] En cas de timeout ou d'erreur Gemini, fallback automatique sur les
+ * informations saisies par l'utilisateur — la contribution n'est jamais perdue.
  */
 export async function generateSEOFromImage(
   imageUrl: string,
@@ -72,8 +106,15 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown) :
 }`
 
   try {
-    // Télécharger l'image pour l'envoyer en base64 à Gemini
-    const imageResponse = await fetch(imageUrl)
+    // [AI-SEO-01] Téléchargement image avec timeout strict (AbortController)
+    const fetchController = new AbortController()
+    const fetchTimer = setTimeout(() => fetchController.abort(), IMAGE_FETCH_TIMEOUT_MS)
+    let imageResponse: Response
+    try {
+      imageResponse = await fetch(imageUrl, { signal: fetchController.signal })
+    } finally {
+      clearTimeout(fetchTimer)
+    }
     if (!imageResponse.ok) throw new Error("Impossible de télécharger l'image")
 
     const imageBuffer = await imageResponse.arrayBuffer()
@@ -86,15 +127,20 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown) :
       systemInstruction: systemPrompt,
     })
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: contentType as 'image/jpeg' | 'image/png' | 'image/webp',
-          data: base64Image,
+    // [AI-SEO-01] Appel Gemini avec timeout — withTimeout() rejette si > GEMINI_TIMEOUT_MS
+    const result = await withTimeout(
+      model.generateContent([
+        {
+          inlineData: {
+            mimeType: contentType as 'image/jpeg' | 'image/png' | 'image/webp',
+            data: base64Image,
+          },
         },
-      },
-      { text: userPrompt },
-    ])
+        { text: userPrompt },
+      ]),
+      GEMINI_TIMEOUT_MS,
+      'Gemini generateContent'
+    )
 
     const responseText = result.response.text()
 
@@ -120,8 +166,8 @@ Retourne UNIQUEMENT ce JSON valide (sans markdown) :
       slug: `${slug}-${Date.now()}`,
     }
   } catch (error) {
-    console.error('Erreur génération SEO Gemini:', error)
-    // Fallback : utiliser les informations de l'utilisateur telles quelles
+    // [AI-SEO-01] Tout échec (timeout, JSON parse, réseau, quota) → fallback déterministe
+    console.error('[ai-seo] Échec Gemini, utilisation fallback:', error instanceof Error ? error.message : error)
     return generateFallbackSEO(userInput)
   }
 }

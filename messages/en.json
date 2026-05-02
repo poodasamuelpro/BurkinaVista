@@ -264,5 +264,34 @@
   },
   "lang": {
     "switch": "FR"
+  },
+  "report": {
+    "button": "Report",
+    "title": "Report this media",
+    "subtitle": "Help us moderate the platform's content",
+    "reason_label": "Report reason",
+    "reason_inappropriate": "Inappropriate content",
+    "reason_copyright": "Copyright infringement",
+    "reason_incorrect_info": "Incorrect information",
+    "reason_spam": "Spam or advertising",
+    "reason_illegal": "Illegal content",
+    "reason_other": "Other reason",
+    "message_label": "Message (optional)",
+    "message_placeholder": "Briefly describe the issue (max 1000 chars)",
+    "email_label": "Your email (optional)",
+    "email_placeholder": "To receive follow-up on this report",
+    "submit": "Send report",
+    "submitting": "Sending…",
+    "success_title": "Thanks for your report",
+    "success_desc": "Our team will review this content within 48 hours.",
+    "error_generic": "Failed to send. Please try again.",
+    "cancel": "Cancel",
+    "legal_notice": "Abusive or repeated reports may be blocked. Your data is kept only for moderation purposes per our privacy policy."
+  },
+  "legal": {
+    "moderation_title": "Community moderation",
+    "moderation_desc": "BurkinaVista relies on community reports to ensure respectful content. Any media reported with valid grounds is reviewed within 48 hours. Our moderation team may remove the media, request changes from the contributor, or dismiss the report.",
+    "data_retention": "Reporter emails and IP addresses are retained for a maximum of 12 months.",
+    "abuse_notice": "Abusive or fraudulent reports may result in an IP ban."
   }
 }

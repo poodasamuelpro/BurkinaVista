@@ -185,6 +185,30 @@ CREATE TABLE IF NOT EXISTS moderation_logs (
 );
 
 -- ============================================================
+-- TABLE: media_reports — [REPORT-01] NOUVEAU (Audit 2026-05-01, Item #14)
+-- Système de modération communautaire : signalement public d'un média
+-- ============================================================
+CREATE TABLE IF NOT EXISTS media_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  media_id UUID NOT NULL REFERENCES medias(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL CHECK (reason IN (
+    'inappropriate', 'copyright', 'incorrect_info', 'spam', 'illegal', 'other'
+  )),
+  message TEXT,
+  reporter_email TEXT,
+  reporter_ip TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'reviewed', 'dismissed', 'actioned')),
+  admin_notes TEXT,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_reports_media_id ON media_reports(media_id);
+CREATE INDEX IF NOT EXISTS idx_media_reports_status   ON media_reports(status);
+CREATE INDEX IF NOT EXISTS idx_media_reports_created  ON media_reports(created_at DESC);
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 

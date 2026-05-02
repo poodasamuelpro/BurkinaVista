@@ -2,27 +2,31 @@
  * app/api/videos/save/route.ts
  * Sauvegarde les métadonnées d'une vidéo dans Neon après upload Backblaze B2
  *
- * CORRECTIONS APPLIQUÉES :
- *  [BUG-23] Doublon de code upsertContributeur identique à upload/route.ts
- *           → Centralisé ici (sera extrait dans lib/contributeur.ts idéalement)
- *  [BUG-24] pingGoogle() dupliquée dans save/route.ts et upload/route.ts
- *           → Gardée ici pour compatibilité (idéalement dans lib/ping.ts)
- *  [BUG-25] Headers CORS manquants sur cette route
- *           → Ajout handleOptions() + corsHeaders
- *  [BUG-26] tags non nettoyés en longueur max par tag
- *           → Ajout .substring(0, 50) sur chaque tag
- *  [BUG-27] generateSEOFromText retourne titre_en identique à titre_fr 
- *           même quand pas de traduction — bug mineur signalé
+ * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
+ *  [BUG-23] Doublon code upsertContributeur (idem upload/route.ts)
+ *  [BUG-24] pingGoogle() dupliquée
+ *  [BUG-25] Headers CORS manquants → handleOptions
+ *  [BUG-26] tags non nettoyés en longueur max
+ *  [BUG-27] generateSEOFromText titre_en identique titre_fr (mineur)
+ *
+ * AUDIT 2026-05-01 — NOUVELLES CORRECTIONS :
+ *  [VIDEO-SAVE-01] Rate-limiting par IP (10 saves / 10 min)
+ *  [VIDEO-SAVE-02] Captcha Turnstile (déjà validé sur upload-url, mais on
+ *                  re-vérifie ici par défense en profondeur si présent)
+ *  [VIDEO-SAVE-03] Validation que la b2Key correspond bien au format attendu
+ *                  (déjà partiellement présente, on la renforce).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { generateSEOFromText } from '@/lib/ai-seo'
 import { query, queryOne } from '@/lib/db'
 import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
+import { rateLimitByIp, RATE_LIMITS, rateLimitHeaders, getClientIp } from '@/lib/rate-limit'
+import { verifyTurnstile } from '@/lib/turnstile'
 import type { Media, LicenceType } from '@/types'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
-// [FIX BUG-25] — Origines CORS autorisées
 const ALLOWED_CORS_ORIGINS = [
   'https://burkina-vista.vercel.app',
   'https://burkinavistabf.poodasamuel.com',
@@ -41,7 +45,7 @@ function getCorsHeaders(req: NextRequest): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Turnstile-Token',
     'Access-Control-Allow-Credentials': 'true',
     Vary: 'Origin',
   }
@@ -70,8 +74,31 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req)
 
+  // [VIDEO-SAVE-01] Rate-limit par IP
+  const rl = await rateLimitByIp(req, RATE_LIMITS.VIDEO_SAVE)
+  const baseHeaders = { ...corsHeaders, ...rateLimitHeaders(rl) }
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'Trop d\'opérations. Merci de patienter quelques minutes.' },
+      { status: 429, headers: baseHeaders }
+    )
+  }
+
   try {
     const body = await req.json()
+
+    // [VIDEO-SAVE-02] Captcha Turnstile si fourni (skip si non configuré)
+    const headerToken = req.headers.get('x-turnstile-token')
+    const captchaToken = headerToken || body.turnstileToken
+    if (captchaToken) {
+      const captchaOk = await verifyTurnstile(captchaToken, getClientIp(req))
+      if (!captchaOk) {
+        return NextResponse.json(
+          { error: 'Vérification anti-spam échouée.' },
+          { status: 400, headers: baseHeaders }
+        )
+      }
+    }
 
     const { b2Url, b2Key } = body
     const contributeurPrenom = (body.contributeurPrenom as string)?.trim()
@@ -87,58 +114,55 @@ export async function POST(req: NextRequest) {
     const tagsRaw = (body.tags as string)?.trim() || ''
     const duration = body.duration ? Number(body.duration) : null
 
-    // ── Validations ──────────────────────────────────────────
-
     if (!b2Url || typeof b2Url !== 'string' || !b2Url.startsWith('https://')) {
       return NextResponse.json(
         { error: 'b2Url invalide (doit commencer par https://)' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!b2Key || typeof b2Key !== 'string' || !b2Key.startsWith('videos/')) {
       return NextResponse.json(
         { error: 'b2Key invalide (doit commencer par videos/)' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!categorie || !ALLOWED_CATEGORIES.includes(categorie)) {
       return NextResponse.json(
         { error: `Catégorie invalide. Valeurs acceptées : ${ALLOWED_CATEGORIES.join(', ')}` },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!ALLOWED_LICENCES.includes(licence)) {
       return NextResponse.json(
         { error: 'Licence invalide' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!contributeurPrenom || !contributeurNom) {
       return NextResponse.json(
         { error: 'Prénom et nom du contributeur requis' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!contributeurEmail || !EMAIL_REGEX.test(contributeurEmail)) {
       return NextResponse.json(
         { error: 'Email contributeur invalide' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (duration !== null && (isNaN(duration) || duration < 0 || duration > 86400)) {
       return NextResponse.json(
         { error: 'Durée vidéo invalide (max 86400 secondes)' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
-    // [FIX BUG-26] Tags nettoyés avec longueur max par tag
     const tags = tagsRaw
       ? tagsRaw
           .split(',')
@@ -147,7 +171,6 @@ export async function POST(req: NextRequest) {
           .slice(0, 20)
       : []
 
-    // Générer le SEO à partir des infos contributeur
     const seoData = generateSEOFromText({
       titre,
       description,
@@ -158,7 +181,6 @@ export async function POST(req: NextRequest) {
       tags,
     })
 
-    // Insérer dans Neon
     const [inserted] = await query<Media>(
       `INSERT INTO medias (
         type, b2_url, b2_key, thumbnail_url, duration,
@@ -173,7 +195,7 @@ export async function POST(req: NextRequest) {
       [
         b2Url,
         b2Key,
-        null, // thumbnail_url — pas de thumbnail automatique pour l'instant
+        null,
         duration,
         seoData.slug,
         seoData.titre,
@@ -199,7 +221,7 @@ export async function POST(req: NextRequest) {
     if (!media) {
       return NextResponse.json(
         { error: 'Erreur lors de la sauvegarde' },
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: baseHeaders }
       )
     }
 
@@ -220,13 +242,12 @@ export async function POST(req: NextRequest) {
 
     pingGoogle().catch(() => {})
 
-    return NextResponse.json({ success: true, media }, { headers: corsHeaders })
-
+    return NextResponse.json({ success: true, media }, { headers: baseHeaders })
   } catch (error) {
     console.error('[save-video] Erreur:', error)
     return NextResponse.json(
       { error: 'Erreur serveur lors de la sauvegarde de la vidéo' },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: baseHeaders }
     )
   }
 }

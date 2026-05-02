@@ -5,11 +5,18 @@
  *
  * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
  *  - CRITIQUE : La suppression vidéo ne supprimait PAS le fichier dans Backblaze B2 !
- *    Un DELETE supprimait seulement l'entrée Neon, laissant le fichier dans B2.
- *    → Ajout suppressionB2() pour supprimer le fichier B2 lors d'un DELETE vidéo.
  *  - Ajout validation UUID pour le paramètre id (évite injections)
  *  - Ajout rejection_reason lors d'un reject (champ prévu en DB mais non utilisé)
  *  - PATCH sans statut valide retournait 400 sans détail — message amélioré
+ *
+ * AUDIT 2026-05-01 — NOUVELLES CORRECTIONS :
+ *  [MOD-LOG-01] Toute action de modération (approve/reject/delete) effectuée par
+ *               l'admin est désormais journalisée dans la table moderation_logs
+ *               (migration neon-migration.sql). La source est 'dashboard' pour
+ *               distinguer des actions effectuées via les liens email
+ *               (/api/moderation, source='email_link').
+ *  [MOD-LOG-02] L'écriture du log est non-bloquante : si la table est indisponible,
+ *               l'opération PATCH/DELETE réussit quand même (priorité métier).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAdminToken } from '@/lib/auth'
@@ -18,12 +25,12 @@ import { sendApprovalConfirmation } from '@/lib/email'
 import { deleteFromCloudinary } from '@/lib/cloudinary'
 import { getB2Client, getB2BucketName } from '@/lib/b2'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { logModerationAction } from '@/lib/moderation-log'
+import { UUID_V4_REGEX } from '@/lib/security'
 import type { Media } from '@/types'
 
 export const dynamic = 'force-dynamic'
-
-// Regex UUID v4
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const runtime = 'nodejs'
 
 async function checkAdmin(req: NextRequest): Promise<boolean> {
   const token = req.cookies.get('admin_token')?.value
@@ -40,8 +47,8 @@ export async function PATCH(req: NextRequest) {
   try {
     const { id, statut, rejection_reason } = await req.json()
 
-    if (!id || !UUID_REGEX.test(id)) {
-      return NextResponse.json({ error: 'id invalide (UUID requis)' }, { status: 400 })
+    if (!id || typeof id !== 'string' || !UUID_V4_REGEX.test(id)) {
+      return NextResponse.json({ error: 'id invalide (UUID v4 requis)' }, { status: 400 })
     }
 
     if (!statut) {
@@ -55,7 +62,7 @@ export async function PATCH(req: NextRequest) {
       )
     }
 
-    // ✅ CORRECTION — Enregistrement de rejection_reason lors d'un refus
+    // Enregistrement de rejection_reason lors d'un refus
     const updateQuery = statut === 'rejected'
       ? 'UPDATE medias SET statut = $1, rejection_reason = $2, updated_at = NOW() WHERE id = $3 RETURNING *'
       : 'UPDATE medias SET statut = $1, updated_at = NOW() WHERE id = $2 RETURNING *'
@@ -80,6 +87,17 @@ export async function PATCH(req: NextRequest) {
       ).catch((err) => console.error('Erreur email approbation:', err))
     }
 
+    // [MOD-LOG-01] Journalisation de l'action (approve/reject seulement,
+    // 'pending' n'est pas réellement une modération mais un retour en file d'attente)
+    if (statut === 'approved' || statut === 'rejected') {
+      logModerationAction({
+        mediaId: id,
+        action: statut === 'approved' ? 'approve' : 'reject',
+        source: 'dashboard',
+        reason: statut === 'rejected' ? (rejection_reason || null) : null,
+      }).catch(() => {})
+    }
+
     return NextResponse.json({ success: true, media })
   } catch (error) {
     console.error('Erreur PATCH media:', error)
@@ -96,8 +114,8 @@ export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json()
 
-    if (!id || !UUID_REGEX.test(id)) {
-      return NextResponse.json({ error: 'id invalide (UUID requis)' }, { status: 400 })
+    if (!id || typeof id !== 'string' || !UUID_V4_REGEX.test(id)) {
+      return NextResponse.json({ error: 'id invalide (UUID v4 requis)' }, { status: 400 })
     }
 
     // Récupérer le média avant suppression
@@ -109,25 +127,29 @@ export async function DELETE(req: NextRequest) {
 
     // ── Suppression du fichier physique ──────────────────────
     if (media.type === 'photo' && media.cloudinary_public_id) {
-      // Supprimer de Cloudinary
       try {
         await deleteFromCloudinary(media.cloudinary_public_id)
       } catch (err) {
         console.error('Erreur suppression Cloudinary:', err)
-        // On continue — la suppression DB est prioritaire
       }
     } else if (media.type === 'video' && media.b2_key) {
-      // ✅ CORRECTION CRITIQUE — Supprimer de Backblaze B2 (manquant dans l'original)
       try {
         await deleteFromB2(media.b2_key)
       } catch (err) {
         console.error('Erreur suppression B2:', err)
-        // On continue — la suppression DB est prioritaire
       }
     }
 
     // Supprimer de Neon
     await query('DELETE FROM medias WHERE id = $1', [id])
+
+    // [MOD-LOG-01] Journalisation de la suppression
+    logModerationAction({
+      mediaId: id,
+      action: 'delete',
+      source: 'dashboard',
+      reason: `Suppression admin du média "${media.titre}"`,
+    }).catch(() => {})
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -138,7 +160,6 @@ export async function DELETE(req: NextRequest) {
 
 /**
  * Supprime un fichier de Backblaze B2
- * ✅ NOUVELLE FONCTION — manquante dans l'original
  */
 async function deleteFromB2(b2Key: string): Promise<void> {
   const b2Client = getB2Client()

@@ -3,26 +3,36 @@
  * Photos → Cloudinary → SEO Gemini → Neon
  *
  * CORRECTIONS APPLIQUÉES :
- *  [BUG-28] Headers CORS manquants → preflight OPTIONS non géré
- *           → Ajout OPTIONS + getCorsHeaders()
- *  [BUG-29] upsertContributeur ne met pas à jour last_contribution_at
- *           → Ajout last_contribution_at = NOW() sur UPDATE
- *  [BUG-30] Pas de try/catch autour de l'appel Gemini (generateSEOFromImage)
- *           si l'image Cloudinary est inaccessible juste après upload
- *           → Déjà géré dans ai-seo.ts (fallback) — confirmé OK
- *  [BUG-31] slug non vérifié unicité avant insertion (peut générer une erreur UNIQUE)
- *           → Ajout d'un suffixe timestamp (déjà présent dans ai-seo.ts) — confirmé OK
- *           mais on ajoute un catch spécifique sur l'erreur unique pour retry
+ *  [BUG-28] Headers CORS manquants → OPTIONS + getCorsHeaders()
+ *  [BUG-29] upsertContributeur ne mettait pas à jour last_contribution_at
+ *  [BUG-30] try/catch autour de Gemini (déjà géré dans ai-seo.ts via fallback)
+ *  [BUG-31] slug : suffixe timestamp pour éviter collision UNIQUE
+ *
+ * AUDIT 2026-05-01 — NOUVELLES CORRECTIONS :
+ *  [UP-01] Rate-limiting par IP (10 uploads / 10 min) — RATE_LIMITS.UPLOAD_PHOTO
+ *  [UP-02] Captcha Cloudflare Turnstile (header X-Turnstile-Token ou champ form
+ *          turnstileToken). Skip silencieux si non configuré.
+ *  [UP-03] Vérification magic bytes — un fichier renommé .jpg mais qui n'est pas
+ *          une vraie image sera rejeté avant upload Cloudinary.
+ *  [UP-04] Suppression des métadonnées EXIF (géolocalisation, appareil) via sharp
+ *          AVANT upload Cloudinary, pour protéger la vie privée du contributeur.
+ *  [UP-05] Scan antivirus best-effort via VirusTotal (timeout 3s, non bloquant
+ *          en cas d'erreur, blocage uniquement si ≥3 moteurs détectent un malware).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { generateSEOFromImage } from '@/lib/ai-seo'
 import { query, queryOne } from '@/lib/db'
 import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
+import { rateLimitByIp, RATE_LIMITS, rateLimitHeaders, getClientIp } from '@/lib/rate-limit'
+import { verifyTurnstile } from '@/lib/turnstile'
+import { verifyMagicBytes, stripExifFromImage } from '@/lib/security'
+import { scanBufferQuick } from '@/lib/virustotal'
 import type { Media, LicenceType } from '@/types'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
@@ -38,7 +48,6 @@ const ALLOWED_CATEGORIES = [
 const ALLOWED_LICENCES: LicenceType[] = ['CC BY', 'CC0', 'CC BY-NC', 'CC BY-SA']
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-// [FIX BUG-28] — Origines CORS autorisées
 const ALLOWED_CORS_ORIGINS = [
   'https://burkina-vista.vercel.app',
   'https://burkinavistabf.poodasamuel.com',
@@ -57,13 +66,12 @@ function getCorsHeaders(req: NextRequest): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Turnstile-Token',
     'Access-Control-Allow-Credentials': 'true',
     Vary: 'Origin',
   }
 }
 
-// [FIX BUG-28] — Preflight CORS
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) })
 }
@@ -71,8 +79,29 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req)
 
+  // [UP-01] Rate-limiting par IP
+  const rl = await rateLimitByIp(req, RATE_LIMITS.UPLOAD_PHOTO)
+  const baseHeaders = { ...corsHeaders, ...rateLimitHeaders(rl) }
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: 'Trop d\'uploads. Merci de patienter quelques minutes avant de réessayer.' },
+      { status: 429, headers: baseHeaders }
+    )
+  }
+
   try {
     const formData = await req.formData()
+
+    // [UP-02] Captcha Turnstile (header ou champ form)
+    const headerToken = req.headers.get('x-turnstile-token')
+    const turnstileToken = headerToken || (formData.get('turnstileToken') as string | null)
+    const captchaOk = await verifyTurnstile(turnstileToken, getClientIp(req))
+    if (!captchaOk) {
+      return NextResponse.json(
+        { error: 'Vérification anti-spam échouée. Veuillez recharger la page et réessayer.' },
+        { status: 400, headers: baseHeaders }
+      )
+    }
 
     const contributeurPrenom = (formData.get('contributeur_prenom') as string)?.trim()
     const contributeurNom = (formData.get('contributeur_nom') as string)?.trim()
@@ -89,57 +118,56 @@ export async function POST(req: NextRequest) {
     const licence = ((formData.get('licence') as string) || 'CC BY') as LicenceType
     const tagsRaw = (formData.get('tags') as string)?.trim() || ''
 
-    // Guard vidéo
     if (type === 'video' || file?.type?.startsWith('video/')) {
       return NextResponse.json(
         { error: 'Les vidéos ne passent pas par cette route. Utilisez /api/videos/upload-url puis /api/videos/save.' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!file) {
-      return NextResponse.json({ error: 'Fichier requis' }, { status: 400, headers: corsHeaders })
+      return NextResponse.json({ error: 'Fichier requis' }, { status: 400, headers: baseHeaders })
     }
 
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       return NextResponse.json(
         { error: 'Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP, GIF' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (file.size > MAX_PHOTO_SIZE_BYTES) {
       return NextResponse.json(
         { error: 'Fichier trop volumineux. Maximum 20 Mo.' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!categorie || !ALLOWED_CATEGORIES.includes(categorie)) {
       return NextResponse.json(
         { error: `Catégorie invalide. Valeurs acceptées : ${ALLOWED_CATEGORIES.join(', ')}` },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!ALLOWED_LICENCES.includes(licence)) {
       return NextResponse.json(
         { error: 'Licence invalide' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!contributeurPrenom || !contributeurNom) {
       return NextResponse.json(
         { error: 'Prénom et nom du contributeur requis' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
     if (!contributeurEmail || !EMAIL_REGEX.test(contributeurEmail)) {
       return NextResponse.json(
         { error: 'Email contributeur invalide' },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: baseHeaders }
       )
     }
 
@@ -152,7 +180,35 @@ export async function POST(req: NextRequest) {
       : []
 
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    let buffer = Buffer.from(arrayBuffer)
+
+    // [UP-03] Vérification magic bytes
+    if (!verifyMagicBytes(buffer, file.type)) {
+      return NextResponse.json(
+        { error: "Le contenu du fichier ne correspond pas au format déclaré. Fichier potentiellement corrompu ou suspect." },
+        { status: 400, headers: baseHeaders }
+      )
+    }
+
+    // [UP-05] Scan antivirus best-effort (non bloquant en cas d'erreur)
+    const scan = await scanBufferQuick(buffer)
+    if (!scan.safe) {
+      console.warn('[upload] Fichier détecté comme malicieux par VirusTotal:', scan.detections)
+      return NextResponse.json(
+        { error: "Ce fichier a été identifié comme potentiellement malicieux et a été rejeté." },
+        { status: 400, headers: baseHeaders }
+      )
+    }
+
+    // [UP-04] Suppression des métadonnées EXIF (vie privée)
+    // Skip pour les GIF (sharp ne gère pas le GIF animé proprement)
+    if (file.type !== 'image/gif') {
+      try {
+        buffer = await stripExifFromImage(buffer, file.type)
+      } catch (err) {
+        console.warn('[upload] stripExif a échoué, on continue avec l\'original:', err)
+      }
+    }
 
     const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
 
@@ -199,11 +255,10 @@ export async function POST(req: NextRequest) {
     if (!media) {
       return NextResponse.json(
         { error: 'Erreur lors de la sauvegarde' },
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: baseHeaders }
       )
     }
 
-    // [FIX BUG-29] — upsertContributeur avec last_contribution_at
     await upsertContributeur(contributeurPrenom, contributeurNom, contributeurEmail, contributeurTel)
 
     const emailMedia: Media = {
@@ -221,18 +276,16 @@ export async function POST(req: NextRequest) {
 
     pingGoogle().catch(() => {})
 
-    return NextResponse.json({ success: true, media }, { headers: corsHeaders })
-
+    return NextResponse.json({ success: true, media }, { headers: baseHeaders })
   } catch (error) {
     console.error('[upload] Erreur:', error)
     return NextResponse.json(
       { error: "Erreur serveur lors de l'upload" },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: baseHeaders }
     )
   }
 }
 
-// [FIX BUG-29] — Ajout last_contribution_at
 async function upsertContributeur(
   prenom: string,
   nom: string,

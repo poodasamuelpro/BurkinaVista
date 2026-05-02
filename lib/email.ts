@@ -2,9 +2,18 @@
  * lib/email.ts — Envoi d'emails avec Resend
  * Confirmation contributeur, notification admin, newsletter, bienvenue
  * Anti-spam : List-Unsubscribe headers, sujets sans emojis, nom expéditeur neutre
+ *
+ * AUDIT 2026-05-01 — CORRECTION APPLIQUÉE :
+ *  [EMAIL-XSS] Échappement HTML systématique des variables IA (titre, description,
+ *              alt_text…) et des saisies contributeur (prénom, nom, email, téléphone)
+ *              avant interpolation dans les templates. Avant cette correction, un
+ *              titre généré par Gemini contenant des balises HTML (improbable mais
+ *              possible via injection prompt) ou un nom de contributeur contenant
+ *              `<img onerror=…>` aurait été rendu tel quel dans la boîte mail admin.
  */
 import { Resend } from 'resend'
 import { createModerationToken, createUnsubscribeToken } from './auth'
+import { escapeHtml } from './security'
 import type { Media, Abonne } from '@/types'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -69,15 +78,20 @@ export async function sendContributorConfirmation(
   titre: string
 ): Promise<void> {
   try {
+    // [EMAIL-XSS] Échappement systématique des variables interpolées
+    const safePrenom = escapeHtml(prenom)
+    const safeTitre = escapeHtml(titre)
+    const safeSubjectTitre = String(titre).substring(0, 100)
+
     await resend.emails.send({
       from: FROM_DISPLAY,
       to: email,
       subject: `Votre contribution a bien été reçue — BurkinaVista`,
       html: wrapEmail(`
         <div style="padding:36px 32px;">
-          <h1 style="font-size:22px;font-weight:bold;color:#EFC031;margin:0 0 16px 0;">Merci ${prenom} !</h1>
+          <h1 style="font-size:22px;font-weight:bold;color:#EFC031;margin:0 0 16px 0;">Merci ${safePrenom} !</h1>
           <p style="color:rgba(255,255,255,0.7);font-size:15px;line-height:1.7;margin:0 0 24px 0;">
-            Votre contribution <strong style="color:#ffffff;">"${titre}"</strong> a bien été reçue 
+            Votre contribution <strong style="color:#ffffff;">"${safeTitre}"</strong> a bien été reçue 
             et est en attente de validation par notre équipe.
           </p>
           <div style="background:rgba(239,192,49,0.08);border-left:3px solid #EFC031;padding:16px 20px;border-radius:4px;margin:0 0 24px 0;">
@@ -94,6 +108,8 @@ export async function sendContributorConfirmation(
         </div>
       `),
     })
+    // Reference safeSubjectTitre pour éviter l'avertissement TS unused variable
+    void safeSubjectTitre
   } catch (error) {
     console.error('Erreur envoi email confirmation contributeur:', error)
   }
@@ -117,19 +133,32 @@ export async function sendAdminNotification(media: Media & {
 
     const approveToken = await createModerationToken(media.id, 'approve')
     const rejectToken = await createModerationToken(media.id, 'reject')
-    const approveUrl = `${APP_URL}/api/moderation?action=approve&id=${media.id}&token=${approveToken}`
-    const rejectUrl = `${APP_URL}/api/moderation?action=reject&id=${media.id}&token=${rejectToken}`
+    const approveUrl = `${APP_URL}/api/moderation?action=approve&id=${encodeURIComponent(media.id)}&token=${encodeURIComponent(approveToken)}`
+    const rejectUrl = `${APP_URL}/api/moderation?action=reject&id=${encodeURIComponent(media.id)}&token=${encodeURIComponent(rejectToken)}`
 
-    const mediaHtml = media.type === 'photo' && media.cloudinary_url
-      ? `<img src="${media.cloudinary_url}" alt="${media.titre}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto 24px auto;" />`
+    // [EMAIL-XSS] Échappement de toutes les variables non fiables
+    const safeTitre = escapeHtml(media.titre)
+    const safeAlt = escapeHtml(media.alt_text || media.titre)
+    const safeCategorie = escapeHtml(media.categorie)
+    const safeVille = escapeHtml(media.ville || '')
+    const safeRegion = escapeHtml(media.region || '')
+    const safeLicence = escapeHtml(media.licence)
+    const safePrenom = escapeHtml(media.contributeur_prenom || '')
+    const safeNom = escapeHtml(media.contributeur_nom || '')
+    const safeEmail = escapeHtml(media.contributeur_email || '')
+    const safeTel = escapeHtml(media.contributeur_tel || '')
+    const safeImageUrl = encodeURI(media.cloudinary_url || media.thumbnail_url || '')
+
+    const mediaHtml = (media.type === 'photo' && media.cloudinary_url)
+      ? `<img src="${safeImageUrl}" alt="${safeAlt}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto 24px auto;" />`
       : media.thumbnail_url
-        ? `<img src="${media.thumbnail_url}" alt="${media.titre}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto 24px auto;" />`
+        ? `<img src="${safeImageUrl}" alt="${safeAlt}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto 24px auto;" />`
         : `<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:32px;text-align:center;color:rgba(255,255,255,0.3);margin-bottom:24px;font-size:14px;">Pas de miniature disponible</div>`
 
     await resend.emails.send({
       from: FROM_DISPLAY,
       to: ADMIN_EMAIL,
-      subject: `Nouveau média en attente de modération — ${media.titre}`,
+      subject: `Nouveau média en attente de modération — ${String(media.titre).substring(0, 100)}`,
       html: wrapEmail(`
         <div style="padding:36px 32px;">
           <p style="color:rgba(255,255,255,0.4);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 20px 0;">Administration — Modération</p>
@@ -141,7 +170,7 @@ export async function sendAdminNotification(media: Media & {
             <table style="width:100%;border-collapse:collapse;">
               <tr>
                 <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:13px;width:35%;">Titre</td>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;font-weight:bold;">${media.titre}</td>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;font-weight:bold;">${safeTitre}</td>
               </tr>
               <tr>
                 <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:13px;">Type</td>
@@ -149,16 +178,16 @@ export async function sendAdminNotification(media: Media & {
               </tr>
               <tr>
                 <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:13px;">Catégorie</td>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#EFC031;font-size:13px;">${media.categorie}</td>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#EFC031;font-size:13px;">${safeCategorie}</td>
               </tr>
-              ${media.ville ? `
+              ${safeVille ? `
               <tr>
                 <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:13px;">Lieu</td>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;">${media.ville}${media.region ? `, ${media.region}` : ''}</td>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;">${safeVille}${safeRegion ? `, ${safeRegion}` : ''}</td>
               </tr>` : ''}
               <tr>
                 <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:13px;">Licence</td>
-                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;">${media.licence}</td>
+                <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);color:#ffffff;font-size:13px;">${safeLicence}</td>
               </tr>
               <tr>
                 <td style="padding:8px 0;color:rgba(255,255,255,0.35);font-size:13px;">Date upload</td>
@@ -169,9 +198,9 @@ export async function sendAdminNotification(media: Media & {
 
           <div style="background:rgba(0,154,0,0.08);border-radius:10px;padding:20px;margin-bottom:24px;border:1px solid rgba(0,154,0,0.15);">
             <p style="color:#009A00;font-size:12px;font-weight:bold;margin:0 0 12px 0;text-transform:uppercase;letter-spacing:0.05em;">Contributeur</p>
-            <p style="color:#ffffff;font-size:15px;font-weight:bold;margin:0 0 6px 0;">${media.contributeur_prenom || ''} ${media.contributeur_nom || ''}</p>
-            ${media.contributeur_email ? `<p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0 0 4px 0;">${media.contributeur_email}</p>` : ''}
-            ${media.contributeur_tel ? `<p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">${media.contributeur_tel}</p>` : ''}
+            <p style="color:#ffffff;font-size:15px;font-weight:bold;margin:0 0 6px 0;">${safePrenom} ${safeNom}</p>
+            ${safeEmail ? `<p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0 0 4px 0;">${safeEmail}</p>` : ''}
+            ${safeTel ? `<p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">${safeTel}</p>` : ''}
           </div>
 
           <p style="color:rgba(255,255,255,0.3);font-size:12px;text-align:center;margin:0 0 16px 0;">Action directe — aucune connexion requise · Token expire dans 72h</p>
@@ -198,6 +227,7 @@ export async function sendWelcomeNewsletter(email: string, nom?: string): Promis
   try {
     const unsubscribeToken = await createUnsubscribeToken(email)
     const unsubscribeUrl = `${APP_URL}/api/newsletter/unsubscribe?email=${encodeURIComponent(email)}&token=${unsubscribeToken}`
+    const safeNom = nom ? escapeHtml(nom) : ''
 
     await resend.emails.send({
       from: FROM_DISPLAY,
@@ -209,7 +239,7 @@ export async function sendWelcomeNewsletter(email: string, nom?: string): Promis
       },
       html: wrapEmail(`
         <div style="padding:36px 32px;">
-          <h1 style="font-size:22px;font-weight:bold;color:#EFC031;margin:0 0 16px 0;">Bienvenue ${nom ? nom : ''} !</h1>
+          <h1 style="font-size:22px;font-weight:bold;color:#EFC031;margin:0 0 16px 0;">Bienvenue ${safeNom} !</h1>
           <p style="color:rgba(255,255,255,0.7);font-size:15px;line-height:1.7;margin:0 0 16px 0;">
             Vous êtes maintenant abonné(e) à la newsletter de <strong style="color:#ffffff;">BurkinaVista</strong> — 
             la bibliothèque visuelle libre du Burkina Faso.
@@ -242,15 +272,23 @@ export async function sendNewsletter(abonnes: Abonne[], medias: Media[]): Promis
   const mediasToShow = medias.slice(0, 12)
   const mediasHtml = mediasToShow.map((media) => {
     const imgUrl = media.type === 'photo' ? media.cloudinary_url : media.thumbnail_url
-    return imgUrl ? `
+    if (!imgUrl) return ''
+    // [EMAIL-XSS] Échappement des champs interpolés
+    const safeTitre = escapeHtml(media.titre)
+    const safeAlt = escapeHtml(media.alt_text || media.titre)
+    const safeCategorie = escapeHtml(media.categorie)
+    const safeVille = escapeHtml(media.ville || '')
+    const safeImgUrl = encodeURI(imgUrl)
+    const safeSlug = encodeURIComponent(media.slug)
+    return `
       <div style="width:48%;display:inline-block;vertical-align:top;margin-bottom:16px;padding:0 4px;box-sizing:border-box;">
-        <a href="${APP_URL}/photos/${media.slug}" style="text-decoration:none;">
-          <img src="${imgUrl}" alt="${media.alt_text || media.titre}" style="width:100%;height:160px;object-fit:cover;border-radius:8px;display:block;" />
-          <p style="color:#ffffff;font-size:13px;font-weight:bold;margin:8px 0 2px 0;">${media.titre}</p>
-          <p style="color:rgba(255,255,255,0.35);font-size:11px;margin:0;">${media.categorie}${media.ville ? ` · ${media.ville}` : ''}</p>
+        <a href="${APP_URL}/photos/${safeSlug}" style="text-decoration:none;">
+          <img src="${safeImgUrl}" alt="${safeAlt}" style="width:100%;height:160px;object-fit:cover;border-radius:8px;display:block;" />
+          <p style="color:#ffffff;font-size:13px;font-weight:bold;margin:8px 0 2px 0;">${safeTitre}</p>
+          <p style="color:rgba(255,255,255,0.35);font-size:11px;margin:0;">${safeCategorie}${safeVille ? ` · ${safeVille}` : ''}</p>
         </a>
       </div>
-    ` : ''
+    `
   }).join('')
 
   for (const abonne of abonnes) {
@@ -306,19 +344,24 @@ export async function sendApprovalConfirmation(
   slug: string
 ): Promise<void> {
   try {
+    // [EMAIL-XSS] Échappement
+    const safePrenom = escapeHtml(prenom)
+    const safeTitre = escapeHtml(titre)
+    const safeSlug = encodeURIComponent(slug)
+
     await resend.emails.send({
       from: FROM_DISPLAY,
       to: email,
       subject: `Votre média a été approuvé — BurkinaVista`,
       html: wrapEmail(`
         <div style="padding:36px 32px;">
-          <h1 style="font-size:22px;font-weight:bold;color:#009A00;margin:0 0 16px 0;">Félicitations ${prenom} !</h1>
+          <h1 style="font-size:22px;font-weight:bold;color:#009A00;margin:0 0 16px 0;">Félicitations ${safePrenom} !</h1>
           <p style="color:rgba(255,255,255,0.7);font-size:15px;line-height:1.7;margin:0 0 32px 0;">
-            Votre média <strong style="color:#ffffff;">"${titre}"</strong> a été approuvé et est maintenant 
+            Votre média <strong style="color:#ffffff;">"${safeTitre}"</strong> a été approuvé et est maintenant 
             visible sur BurkinaVista.
           </p>
           <div style="text-align:center;">
-            <a href="${APP_URL}/photos/${slug}" style="display:inline-block;background:linear-gradient(135deg,#009A00,#007A00);color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:bold;font-size:15px;">Voir mon média</a>
+            <a href="${APP_URL}/photos/${safeSlug}" style="display:inline-block;background:linear-gradient(135deg,#009A00,#007A00);color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:bold;font-size:15px;">Voir mon média</a>
           </div>
         </div>
       `),

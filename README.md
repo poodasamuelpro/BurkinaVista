@@ -4,6 +4,20 @@
 - **Production**: https://burkina-vista.vercel.app
 - **Email contact**: BurkinaVista@gmail.com
 
+## 🔒 Audit sécurité 2026-05-01 — Status
+
+47 corrections appliquées (9 critiques, 14 élevées, 17 modérées, 7 faibles).
+Voir `RAPPORT_AUDIT.md` et `RAPPORT_CORRECTIONS.md` pour le détail complet.
+
+**Variables d'environnement à configurer sur Vercel** (voir `.env.local.example`) :
+- `ADMIN_PASSWORD_HASH` (généré via `node scripts/generate-admin-hash.mjs <pwd>`)
+- `JWT_SECRET` (généré via `openssl rand -base64 32`)
+- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (rate-limiting)
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (captcha)
+- `VIRUSTOTAL_API_KEY` (scan AV optionnel)
+
+**Migrations à appliquer** sur Neon : `neon-migration.sql` (idempotent).
+
 ## ✅ Fonctionnalités implémentées
 
 ### Bilingue FR/EN (next-intl)

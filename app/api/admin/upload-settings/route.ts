@@ -3,15 +3,17 @@
  * Lecture et modification des toggles upload (photos/vidéos)
  *
  * CORRECTIONS APPLIQUÉES (Audit 2026-04-22) :
- *  - CRITIQUE : La route GET n'avait AUCUNE vérification auth admin !
- *    N'importe quel utilisateur pouvait lire les settings via /api/admin/upload-settings
- *    → Ajout checkAdmin() sur le GET aussi.
- *    EXCEPTION : La page /upload appelle cette route sans être connectée.
- *    Solution : on ajoute une route publique séparée /api/upload-settings (lecture seule)
- *    et on protège la route admin.
- *    NOTE : Dans ce fichier on protège le PATCH uniquement (pour compatibilité)
- *    Le GET reste public car la page /upload en a besoin sans authentification.
- *    Pour durcir : créer /api/public/upload-settings séparé (voir rapport).
+ *  - CRITIQUE : Le PATCH n'avait AUCUNE vérification auth admin → ajout checkAdmin()
+ *  - Le GET restait public car la page /upload en avait besoin sans authentification
+ *
+ * AUDIT 2026-05-01 — NOUVELLES CORRECTIONS :
+ *  [ADMIN-SETTINGS-01] Le GET de cette route était volontairement laissé public.
+ *                      → Création d'une route publique dédiée /api/upload-settings
+ *                        (lecture seule) pour la page /upload.
+ *                      → Cette route admin est désormais protégée par le middleware
+ *                        (matcher /api/admin/:path*) ET par checkAdmin() en
+ *                        defense-in-depth sur GET et PATCH.
+ *                      → Le GET ne sert plus que pour le dashboard admin.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAdminToken } from '@/lib/auth'
@@ -27,9 +29,14 @@ async function checkAdmin(req: NextRequest): Promise<boolean> {
 
 /**
  * GET — Récupère les paramètres d'upload actuels
- * Route publique (utilisée par la page /upload sans auth)
+ * [ADMIN-SETTINGS-01] Désormais PROTÉGÉ. Pour un accès public utiliser
+ * la route /api/upload-settings.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await checkAdmin(req))) {
+    return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  }
+
   try {
     const settings = await queryMany<{ cle: string; valeur: string }>(
       "SELECT cle, valeur FROM admin_settings WHERE cle IN ('upload_photos_enabled', 'upload_videos_enabled')",
@@ -47,9 +54,8 @@ export async function GET() {
     })
 
     return NextResponse.json(result)
-
   } catch (error) {
-    console.error('[upload-settings GET] Erreur:', error)
+    console.error('[admin/upload-settings GET] Erreur:', error)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
@@ -59,7 +65,6 @@ export async function GET() {
  * Body : { cle: 'upload_photos_enabled' | 'upload_videos_enabled', valeur: boolean }
  */
 export async function PATCH(req: NextRequest) {
-  // ✅ CORRECTION CRITIQUE — Protection admin manquante sur PATCH
   if (!(await checkAdmin(req))) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
@@ -83,13 +88,9 @@ export async function PATCH(req: NextRequest) {
       [cle, valeur ? 'true' : 'false']
     )
 
-    return NextResponse.json({
-      success: true,
-      [cle]: valeur,
-    })
-
+    return NextResponse.json({ success: true, [cle]: valeur })
   } catch (error) {
-    console.error('[upload-settings PATCH] Erreur:', error)
+    console.error('[admin/upload-settings PATCH] Erreur:', error)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

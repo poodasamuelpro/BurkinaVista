@@ -18,13 +18,14 @@
  *  [BUG-11] Thumbnail vidéo non affichée en preview avant lecture → déjà corrigé
  *           mais ajout d'un meilleur placeholder si thumbnail_url absent
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Download, Share2, MapPin, Calendar, Tag, Eye,
   ChevronLeft, Play, User, Check, AlertCircle
 } from 'lucide-react'
 import PhotoCard from '@/components/photos/PhotoCard'
+import ReportButton from '@/components/photos/ReportButton'
 import type { Media } from '@/types'
 import { useLocale } from '@/context/LocaleContext'
 import toast from 'react-hot-toast'
@@ -39,6 +40,22 @@ export default function PhotoDetailClient({ media, related }: Props) {
   const [copied, setCopied] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [videoError, setVideoError] = useState(false)
+
+  // [PHOTO-01] Compteur de vues côté client (filtre bots côté API)
+  // Déclenché 1 fois par mount, après un délai pour éviter les rebonds rapides
+  useEffect(() => {
+    if (!media?.slug) return
+    const timer = setTimeout(() => {
+      fetch(`/api/medias/${media.slug}/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+      }).catch(() => {
+        // Silent fail — pas critique pour l'expérience utilisateur
+      })
+    }, 3000) // 3s : utilisateur a réellement consulté
+    return () => clearTimeout(timer)
+  }, [media?.slug])
 
   const { locale } = useLocale()
   const titre = locale === 'en' ? (media.titre_en ?? media.titre) : media.titre
@@ -265,6 +282,8 @@ export default function PhotoDetailClient({ media, related }: Props) {
                 {copied ? <Check size={18} /> : <Share2 size={18} />}
                 Partager
               </button>
+              {/* [REPORT-01] Bouton signalement — Système de modération communautaire */}
+              <ReportButton mediaId={media.id} />
             </div>
 
             {/* ── Description ── */}

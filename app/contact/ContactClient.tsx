@@ -2,12 +2,25 @@
 /**
  * app/contact/ContactClient.tsx — Formulaire de contact interactif
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Mail, Send, Loader2, CheckCircle, AlertCircle, MessageSquare, Clock, Globe } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 
 type ContactType = 'complaint' | 'recommendation' | 'advice' | 'dispute' | 'report' | 'question' | 'other'
+
+// [CONTACT-02] Cloudflare Turnstile (Captcha) — chargé uniquement si configuré
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement | string, opts: Record<string, unknown>) => string
+      reset: (widgetId?: string) => void
+      remove: (widgetId?: string) => void
+    }
+  }
+}
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+const TURNSTILE_ENABLED = Boolean(TURNSTILE_SITE_KEY)
 
 export default function ContactClient() {
   const t = useTranslations('contact')
@@ -22,6 +35,49 @@ export default function ContactClient() {
   })
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null)
+  const turnstileWidgetIdRef = useRef<string | null>(null)
+
+  // [CONTACT-02] Charge Turnstile dès montage du formulaire
+  useEffect(() => {
+    if (!TURNSTILE_ENABLED || typeof window === 'undefined') return
+    const SCRIPT_ID = 'cf-turnstile-script'
+    if (!document.getElementById(SCRIPT_ID)) {
+      const s = document.createElement('script')
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+      s.async = true
+      s.defer = true
+      s.id = SCRIPT_ID
+      document.head.appendChild(s)
+    }
+    const tryRender = () => {
+      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) return
+      try {
+        const id = window.turnstile.render(turnstileContainerRef.current, {
+          sitekey: TURNSTILE_SITE_KEY,
+          theme: 'dark',
+          size: 'flexible',
+          callback: (token: string) => setTurnstileToken(token),
+          'error-callback': () => setTurnstileToken(null),
+          'expired-callback': () => setTurnstileToken(null),
+        })
+        turnstileWidgetIdRef.current = id
+      } catch (err) {
+        console.error('[Turnstile] render error:', err)
+      }
+    }
+    const interval = setInterval(() => {
+      if (window.turnstile) { clearInterval(interval); tryRender() }
+    }, 200)
+    return () => {
+      clearInterval(interval)
+      if (window.turnstile && turnstileWidgetIdRef.current) {
+        try { window.turnstile.remove(turnstileWidgetIdRef.current) } catch {}
+        turnstileWidgetIdRef.current = null
+      }
+    }
+  }, [])
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -37,8 +93,11 @@ export default function ContactClient() {
     try {
       const res = await fetch('/api/contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}),
+        },
+        body: JSON.stringify({ ...form, turnstileToken }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -277,6 +336,13 @@ export default function ContactClient() {
               )}
 
               <p className="text-white/30 text-xs">{t('required_fields')}</p>
+
+              {/* [CONTACT-02] Cloudflare Turnstile widget */}
+              {TURNSTILE_ENABLED && (
+                <div className="flex justify-center">
+                  <div ref={turnstileContainerRef} className="cf-turnstile" />
+                </div>
+              )}
 
               {/* Bouton submit */}
               <button
