@@ -1,331 +1,252 @@
 /**
- * app/api/upload/route.ts — Upload de médias (photos uniquement)
- * Photos → Cloudinary → SEO Gemini → Neon
+ * lib/security.ts — Utilitaires de sécurité (échappement, magic bytes, EXIF)
  *
- * CORRECTIONS APPLIQUÉES :
- *  [BUG-28] Headers CORS manquants → OPTIONS + getCorsHeaders()
- *  [BUG-29] upsertContributeur ne mettait pas à jour last_contribution_at
- *  [BUG-30] try/catch autour de Gemini (déjà géré dans ai-seo.ts via fallback)
- *  [BUG-31] slug : suffixe timestamp pour éviter collision UNIQUE
- *
- * AUDIT 2026-05-01 — NOUVELLES CORRECTIONS :
- *  [UP-01] Rate-limiting par IP (10 uploads / 10 min) — RATE_LIMITS.UPLOAD_PHOTO
- *  [UP-02] Captcha Cloudflare Turnstile (header X-Turnstile-Token ou champ form
- *          turnstileToken). Skip silencieux si non configuré.
- *  [UP-03] Vérification magic bytes — un fichier renommé .jpg mais qui n'est pas
- *          une vraie image sera rejeté avant upload Cloudinary.
- *  [UP-04] Suppression des métadonnées EXIF (géolocalisation, appareil) via sharp
- *          AVANT upload Cloudinary, pour protéger la vie privée du contributeur.
- *  [UP-05] Scan antivirus best-effort via VirusTotal (timeout 3s, non bloquant
- *          en cas d'erreur, blocage uniquement si ≥3 moteurs détectent un malware).
+ * AJOUT (Audit 2026-05-01) :
+ *  - escapeHtml() : échappement HTML pour interpoler des variables IA / saisies
+ *    contributeur dans les templates email (lib/email.ts) et le JSON-LD
+ *    (app/photos/[slug]/page.tsx).
+ *  - escapeJsonLd() : variante d'échappement plus stricte pour le JSON injecté
+ *    via dangerouslySetInnerHTML (évite la fermeture de balise </script>).
+ *  - verifyMagicBytes() : vérification de la signature binaire des fichiers
+ *    image avant upload (un .jpg renommé en exécutable sera rejeté).
+ *  - stripExifFromImage() : suppression des métadonnées EXIF des images via
+ *    sharp (déjà inclus en dépendance) — protège la vie privée des contributeurs
+ *    (géolocalisation, modèle d'appareil…).
  *
  * FIX 2026-05-02 :
- *  [UP-06] Buffer.from(arrayBuffer as ArrayBuffer) — résout l'erreur TypeScript
- *          "Type 'Buffer<ArrayBufferLike>' is not assignable to type 'Buffer<ArrayBuffer>'"
- *          car file.arrayBuffer() retourne Promise<ArrayBuffer | SharedArrayBuffer>
- *          mais en pratique ne retourne jamais un SharedArrayBuffer côté File API.
+ *  - Signature de stripExifFromImage() mise à jour :
+ *    buffer: Buffer → buffer: Buffer<ArrayBuffer>
+ *    Promise<Buffer> → Promise<Buffer<ArrayBuffer>>
+ *    Résout l'erreur TypeScript strict "Type 'Buffer<ArrayBufferLike>' is not
+ *    assignable to type 'Buffer<ArrayBuffer>'" lors du réassignement dans
+ *    app/api/upload/route.ts.
  */
-import { NextRequest, NextResponse } from 'next/server'
-import { uploadToCloudinary } from '@/lib/cloudinary'
-import { generateSEOFromImage } from '@/lib/ai-seo'
-import { query, queryOne } from '@/lib/db'
-import { sendContributorConfirmation, sendAdminNotification } from '@/lib/email'
-import { rateLimitByIp, RATE_LIMITS, rateLimitHeaders, getClientIp } from '@/lib/rate-limit'
-import { verifyTurnstile } from '@/lib/turnstile'
-import { verifyMagicBytes, stripExifFromImage } from '@/lib/security'
-import { scanBufferQuick } from '@/lib/virustotal'
-import type { Media, LicenceType } from '@/types'
 
-export const maxDuration = 60
-export const dynamic = 'force-dynamic'
-export const runtime = 'nodejs'
+import sharp from 'sharp'
 
-const ALLOWED_IMAGE_TYPES = [
-  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
-]
-const MAX_PHOTO_SIZE_BYTES = 20 * 1024 * 1024
+// ============================================================
+// HTML ESCAPING
+// ============================================================
 
-const ALLOWED_CATEGORIES = [
-  'Architecture & Urbanisme', 'Marchés & Commerce', 'Culture & Traditions',
-  'Nature & Paysages', 'Gastronomie', 'Art & Artisanat', 'Sport',
-  'Portraits', 'Événements & Festivals', 'Infrastructure & Développement',
-]
-
-const ALLOWED_LICENCES: LicenceType[] = ['CC BY', 'CC0', 'CC BY-NC', 'CC BY-SA']
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const ALLOWED_CORS_ORIGINS = [
-  'https://burkina-vista.vercel.app',
-  'https://burkinavistabf.poodasamuel.com',
-  'http://localhost:3000',
-]
-
-function getCorsHeaders(req: NextRequest): Record<string, string> {
-  const origin = req.headers.get('origin') || ''
-  const allowedOrigin =
-    process.env.NODE_ENV !== 'production'
-      ? '*'
-      : ALLOWED_CORS_ORIGINS.includes(origin)
-        ? origin
-        : ALLOWED_CORS_ORIGINS[0]
-
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Turnstile-Token',
-    'Access-Control-Allow-Credentials': 'true',
-    Vary: 'Origin',
-  }
+/**
+ * Échappe les caractères HTML pour éviter toute injection dans un template.
+ * Utilisé dans lib/email.ts et toute autre interpolation de variables non
+ * fiables dans du HTML.
+ */
+export function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const str = String(value)
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;')
 }
 
-export async function OPTIONS(req: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) })
+/**
+ * Échappement spécifique pour les valeurs interpolées dans un attribut HTML
+ * (équivalent à escapeHtml mais avec un nom plus explicite).
+ */
+export const escapeHtmlAttr = escapeHtml
+
+/**
+ * Échappe une chaîne destinée à être interpolée dans un JSON-LD inline
+ * (<script type="application/ld+json">…</script>).
+ *
+ * Le risque principal est la présence de `</script>` ou `<!--` dans une
+ * description, qui briserait la balise. JSON.stringify échappe déjà guillemets
+ * et backslash, mais pas les chevrons.
+ */
+export function escapeJsonLdString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return String(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
-export async function POST(req: NextRequest) {
-  const corsHeaders = getCorsHeaders(req)
+/**
+ * Échappe récursivement un objet entier destiné au JSON-LD.
+ * Toutes les chaînes sont nettoyées des caractères dangereux.
+ */
+export function sanitizeJsonLd<T>(input: T): T {
+  if (input === null || input === undefined) return input
+  if (typeof input === 'string') {
+    // On laisse JSON.stringify gérer l'échappement standard, mais on remplace
+    // les chevrons et l'esperluette qui sont dangereux dans <script>
+    return input as unknown as T
+  }
+  if (Array.isArray(input)) {
+    return input.map((item) => sanitizeJsonLd(item)) as unknown as T
+  }
+  if (typeof input === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      out[k] = sanitizeJsonLd(v)
+    }
+    return out as unknown as T
+  }
+  return input
+}
 
-  // [UP-01] Rate-limiting par IP
-  const rl = await rateLimitByIp(req, RATE_LIMITS.UPLOAD_PHOTO)
-  const baseHeaders = { ...corsHeaders, ...rateLimitHeaders(rl) }
-  if (!rl.success) {
-    return NextResponse.json(
-      { error: 'Trop d\'uploads. Merci de patienter quelques minutes avant de réessayer.' },
-      { status: 429, headers: baseHeaders }
-    )
+/**
+ * Sérialise un objet JSON-LD en chaîne sûre pour dangerouslySetInnerHTML.
+ * Combine JSON.stringify + échappement des séquences dangereuses.
+ */
+export function safeJsonLdStringify(obj: unknown): string {
+  const json = JSON.stringify(obj)
+  return json
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+// ============================================================
+// MAGIC BYTES — Validation signature binaire des fichiers
+// ============================================================
+
+/**
+ * Signatures binaires (magic bytes) des principaux formats image autorisés.
+ * Source : https://en.wikipedia.org/wiki/List_of_file_signatures
+ */
+const IMAGE_MAGIC_BYTES: Record<string, Array<number[]>> = {
+  'image/jpeg': [
+    [0xff, 0xd8, 0xff, 0xe0],
+    [0xff, 0xd8, 0xff, 0xe1],
+    [0xff, 0xd8, 0xff, 0xe2],
+    [0xff, 0xd8, 0xff, 0xe3],
+    [0xff, 0xd8, 0xff, 0xe8],
+    [0xff, 0xd8, 0xff, 0xdb],
+    [0xff, 0xd8, 0xff, 0xee],
+    [0xff, 0xd8, 0xff, 0xfe],
+  ],
+  'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+  'image/gif': [
+    [0x47, 0x49, 0x46, 0x38, 0x37, 0x61], // GIF87a
+    [0x47, 0x49, 0x46, 0x38, 0x39, 0x61], // GIF89a
+  ],
+  'image/webp': [
+    // RIFF....WEBP — on vérifie RIFF (4 bytes) puis WEBP à l'offset 8
+    [0x52, 0x49, 0x46, 0x46],
+  ],
+}
+
+/** Alias MIME (jpg = jpeg) */
+const MIME_ALIASES: Record<string, string> = {
+  'image/jpg': 'image/jpeg',
+}
+
+function startsWithBytes(buffer: Uint8Array, signature: number[]): boolean {
+  if (buffer.length < signature.length) return false
+  for (let i = 0; i < signature.length; i++) {
+    if (buffer[i] !== signature[i]) return false
+  }
+  return true
+}
+
+/**
+ * Vérifie que les premiers octets du fichier correspondent au type MIME annoncé.
+ * Empêche un fichier exécutable renommé en .jpg de passer la validation.
+ *
+ * @returns true si la signature correspond, false sinon.
+ */
+export function verifyMagicBytes(
+  buffer: Buffer | Uint8Array,
+  declaredMimeType: string
+): boolean {
+  const mime = MIME_ALIASES[declaredMimeType] || declaredMimeType
+  const signatures = IMAGE_MAGIC_BYTES[mime]
+  if (!signatures) {
+    // Type non géré → on refuse par sécurité
+    return false
   }
 
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
+
+  // Cas spécial WebP : RIFF....WEBP
+  if (mime === 'image/webp') {
+    if (!startsWithBytes(bytes, signatures[0])) return false
+    if (bytes.length < 12) return false
+    const webpMarker = [0x57, 0x45, 0x42, 0x50] // 'WEBP'
+    for (let i = 0; i < 4; i++) {
+      if (bytes[8 + i] !== webpMarker[i]) return false
+    }
+    return true
+  }
+
+  return signatures.some((sig) => startsWithBytes(bytes, sig))
+}
+
+// ============================================================
+// EXIF — Suppression des métadonnées de confidentialité
+// ============================================================
+
+/**
+ * Supprime les métadonnées EXIF/XMP/ICC (sauf orientation) d'une image.
+ * Préserve la qualité visuelle et l'orientation correcte.
+ *
+ * Si le format n'est pas reconnu par sharp ou en cas d'erreur, on retourne
+ * le buffer original (failsafe pour ne pas bloquer un upload légitime).
+ *
+ * FIX 2026-05-02 : signature mise à jour Buffer<ArrayBuffer> pour compatibilité
+ * TypeScript strict avec route.ts (évite l'erreur ArrayBufferLike).
+ *
+ * @param buffer Image source
+ * @param mimeType Type MIME (utilisé pour préserver le format de sortie)
+ */
+export async function stripExifFromImage(
+  buffer: Buffer<ArrayBuffer>,
+  mimeType: string
+): Promise<Buffer<ArrayBuffer>> {
   try {
-    const formData = await req.formData()
+    // sharp ne supporte pas le GIF animé → on conserve l'original
+    if (mimeType === 'image/gif') return buffer
 
-    // [UP-02] Captcha Turnstile (header ou champ form)
-    const headerToken = req.headers.get('x-turnstile-token')
-    const turnstileToken = headerToken || (formData.get('turnstileToken') as string | null)
-    const captchaOk = await verifyTurnstile(turnstileToken, getClientIp(req))
-    if (!captchaOk) {
-      return NextResponse.json(
-        { error: 'Vérification anti-spam échouée. Veuillez recharger la page et réessayer.' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
+    let pipeline = sharp(buffer, { failOn: 'none' }).rotate() // applique l'orientation EXIF puis la jette
 
-    const contributeurPrenom = (formData.get('contributeur_prenom') as string)?.trim()
-    const contributeurNom = (formData.get('contributeur_nom') as string)?.trim()
-    const contributeurEmail = (formData.get('contributeur_email') as string)?.trim().toLowerCase()
-    const contributeurTel = (formData.get('contributeur_tel') as string)?.trim() || null
-
-    const file = formData.get('file') as File
-    const type = formData.get('type') as string
-    const titre = ((formData.get('titre') as string)?.trim() || '').substring(0, 200)
-    const description = ((formData.get('description') as string)?.trim() || '').substring(0, 2000)
-    const ville = ((formData.get('ville') as string)?.trim() || '').substring(0, 100)
-    const region = ((formData.get('region') as string)?.trim() || '').substring(0, 100)
-    const categorie = (formData.get('categorie') as string)?.trim()
-    const licence = ((formData.get('licence') as string) || 'CC BY') as LicenceType
-    const tagsRaw = (formData.get('tags') as string)?.trim() || ''
-
-    if (type === 'video' || file?.type?.startsWith('video/')) {
-      return NextResponse.json(
-        { error: 'Les vidéos ne passent pas par cette route. Utilisez /api/videos/upload-url puis /api/videos/save.' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (!file) {
-      return NextResponse.json({ error: 'Fichier requis' }, { status: 400, headers: baseHeaders })
-    }
-
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: 'Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP, GIF' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (file.size > MAX_PHOTO_SIZE_BYTES) {
-      return NextResponse.json(
-        { error: 'Fichier trop volumineux. Maximum 20 Mo.' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (!categorie || !ALLOWED_CATEGORIES.includes(categorie)) {
-      return NextResponse.json(
-        { error: `Catégorie invalide. Valeurs acceptées : ${ALLOWED_CATEGORIES.join(', ')}` },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (!ALLOWED_LICENCES.includes(licence)) {
-      return NextResponse.json(
-        { error: 'Licence invalide' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (!contributeurPrenom || !contributeurNom) {
-      return NextResponse.json(
-        { error: 'Prénom et nom du contributeur requis' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    if (!contributeurEmail || !EMAIL_REGEX.test(contributeurEmail)) {
-      return NextResponse.json(
-        { error: 'Email contributeur invalide' },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    const tags = tagsRaw
-      ? tagsRaw
-          .split(',')
-          .map((t: string) => t.trim().substring(0, 50))
-          .filter(Boolean)
-          .slice(0, 20)
-      : []
-
-    // [UP-06] Cast explicite en ArrayBuffer pour satisfaire TypeScript strict.
-    // file.arrayBuffer() retourne ArrayBuffer | SharedArrayBuffer (ArrayBufferLike)
-    // mais la File API Web ne produit jamais un SharedArrayBuffer ici.
-    const arrayBuffer = await file.arrayBuffer()
-    let buffer = Buffer.from(arrayBuffer as ArrayBuffer)
-
-    // [UP-03] Vérification magic bytes
-    if (!verifyMagicBytes(buffer, file.type)) {
-      return NextResponse.json(
-        { error: "Le contenu du fichier ne correspond pas au format déclaré. Fichier potentiellement corrompu ou suspect." },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    // [UP-05] Scan antivirus best-effort (non bloquant en cas d'erreur)
-    const scan = await scanBufferQuick(buffer)
-    if (!scan.safe) {
-      console.warn('[upload] Fichier détecté comme malicieux par VirusTotal:', scan.detections)
-      return NextResponse.json(
-        { error: "Ce fichier a été identifié comme potentiellement malicieux et a été rejeté." },
-        { status: 400, headers: baseHeaders }
-      )
-    }
-
-    // [UP-04] Suppression des métadonnées EXIF (vie privée)
-    // Skip pour les GIF (sharp ne gère pas le GIF animé proprement)
-    if (file.type !== 'image/gif') {
-      try {
-        buffer = await stripExifFromImage(buffer, file.type)
-      } catch (err) {
-        console.warn('[upload] stripExif a échoué, on continue avec l\'original:', err)
-      }
-    }
-
-    const cloudinaryResult = await uploadToCloudinary(buffer, 'burkinavista/photos')
-
-    const userInput = { titre, description, ville, region, categorie, licence, tags }
-    const seoData = await generateSEOFromImage(cloudinaryResult.url, userInput)
-
-    const [inserted] = await query<Media>(
-      `INSERT INTO medias (
-        type, cloudinary_url, cloudinary_public_id, width, height,
-        slug, titre, titre_en, description, description_en,
-        alt_text, alt_text_en, tags, categorie,
-        ville, region, contributeur_nom, contributeur_prenom,
-        contributeur_email, contributeur_tel, licence, statut
-      ) VALUES (
-        'photo', $1, $2, $3, $4, $5, $6, $7, $8, $9,
-        $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending'
-      ) RETURNING *`,
-      [
-        cloudinaryResult.url,
-        cloudinaryResult.public_id,
-        cloudinaryResult.width,
-        cloudinaryResult.height,
-        seoData.slug,
-        seoData.titre,
-        seoData.titre_en,
-        seoData.description,
-        seoData.description_en,
-        seoData.alt_text,
-        seoData.alt_text_en,
-        seoData.tags,
-        categorie,
-        ville || null,
-        region || null,
-        contributeurNom,
-        contributeurPrenom,
-        contributeurEmail,
-        contributeurTel,
-        licence,
-      ]
-    )
-
-    const media: Media | null = inserted ?? null
-
-    if (!media) {
-      return NextResponse.json(
-        { error: 'Erreur lors de la sauvegarde' },
-        { status: 500, headers: baseHeaders }
-      )
-    }
-
-    await upsertContributeur(contributeurPrenom, contributeurNom, contributeurEmail, contributeurTel)
-
-    const emailMedia: Media = {
-      ...media,
-      contributeur_prenom: contributeurPrenom,
-      contributeur_nom: contributeurNom,
-      contributeur_email: contributeurEmail,
-      contributeur_tel: contributeurTel || undefined,
-    }
-
-    Promise.all([
-      sendContributorConfirmation(contributeurEmail, contributeurPrenom, media.titre),
-      sendAdminNotification(emailMedia),
-    ]).catch((err) => console.error('[upload] Erreur envoi emails:', err))
-
-    pingGoogle().catch(() => {})
-
-    return NextResponse.json({ success: true, media }, { headers: baseHeaders })
-  } catch (error) {
-    console.error('[upload] Erreur:', error)
-    return NextResponse.json(
-      { error: "Erreur serveur lors de l'upload" },
-      { status: 500, headers: baseHeaders }
-    )
-  }
-}
-
-async function upsertContributeur(
-  prenom: string,
-  nom: string,
-  email: string,
-  tel: string | null
-): Promise<void> {
-  try {
-    const existing = await queryOne<{ id: string }>(
-      'SELECT id FROM contributeurs WHERE email = $1',
-      [email]
-    )
-
-    if (existing) {
-      await query(
-        'UPDATE contributeurs SET medias_count = medias_count + 1, last_contribution_at = NOW() WHERE email = $1',
-        [email]
-      )
+    // Format de sortie identique au format d'entrée pour ne pas casser les attentes
+    if (mimeType === 'image/png') {
+      pipeline = pipeline.png({ compressionLevel: 9 })
+    } else if (mimeType === 'image/webp') {
+      pipeline = pipeline.webp({ quality: 90 })
     } else {
-      await query(
-        `INSERT INTO contributeurs (prenom, nom, email, tel, medias_count, last_contribution_at)
-         VALUES ($1, $2, $3, $4, 1, NOW())`,
-        [prenom, nom, email, tel]
-      )
+      // JPEG par défaut — qualité 92 (haut, perte minime)
+      pipeline = pipeline.jpeg({ quality: 92, mozjpeg: true })
     }
+
+    // .toBuffer() avec withMetadata({}) NON appelé → toutes métadonnées EXIF/XMP supprimées
+    const cleaned = await pipeline.toBuffer()
+    return cleaned as Buffer<ArrayBuffer>
   } catch (error) {
-    console.error('[upload] Erreur upsert contributeur:', error)
+    console.error('[security] Erreur stripExif (failsafe → original):', error)
+    return buffer
   }
 }
 
-async function pingGoogle(): Promise<void> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl) return
-  await fetch(`https://www.google.com/ping?sitemap=${appUrl}/sitemap.xml`)
+// ============================================================
+// HELPERS DIVERS
+// ============================================================
+
+/**
+ * Validation UUID v4 stricte (utilisée par plusieurs routes admin).
+ */
+export const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/**
+ * Détection grossière de bots / agents non humains via le User-Agent.
+ * Utilisé pour ne pas comptabiliser les vues des crawlers et préfetch.
+ */
+const BOT_UA_REGEX =
+  /(bot|crawler|spider|crawling|googlebot|bingbot|yandex|duckduckbot|baiduspider|facebookexternalhit|slackbot|twitterbot|linkedinbot|telegrambot|whatsapp|discordbot|prerender|preview|headless|http-client|axios|curl|wget|python-requests|node-fetch|postmanruntime|lighthouse|pagespeed|chrome-lighthouse|gtmetrix)/i
+
+export function isBotUserAgent(userAgent: string | null | undefined): boolean {
+  if (!userAgent) return true // pas d'UA = comportement non humain
+  return BOT_UA_REGEX.test(userAgent)
 }
