@@ -15,11 +15,14 @@
  *
  * CORRECTIONS APPLIQUÉES :
  *  - 6.1 : Timeout XHR 2h + affichage vitesse de transfert
- *  - 6.3 : Statuts photo/vidéo séparés (photoStatus / videoStatus) — corrige le
- *          bug où "upload vidéo bloqué" s'affichait dans la dropzone image
- *  - 6.6 : Dropzone vidéo accepte désormais MKV + AVI
+ *  - 6.3 : Statuts photo/vidéo séparés (photoStatus / videoStatus)
+ *  - 6.6 : Dropzone vidéo accepte MKV + AVI
  *  - 6.7 : État activeTab mort supprimé — soumission photo et vidéo ne partagent
  *          plus le même état status ; les boutons se désactivent mutuellement
+ *  - 6.8 : Turnstile — token toujours attendu avant soumission + indicateur visuel
+ *          "Vérification en cours..." si token pas encore arrivé. Les handleSubmit
+ *          ne plantent jamais même si token null (failsafe côté serveur).
+ *          Le bouton est disabled tant que le token n'est pas prêt, avec message clair.
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -28,7 +31,7 @@ import { useTranslations } from 'next-intl'
 import { useTheme } from '@/context/ThemeContext'
 import {
   Upload, Image, Video, X, CheckCircle, AlertCircle,
-  Loader2, Info, ChevronDown, User, Mail, Phone, Lock
+  Loader2, Info, ChevronDown, User, Mail, Phone, Lock, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { LicenceType, UploadSettings } from '@/types'
@@ -56,6 +59,9 @@ interface FileWithPreview {
 // ✅ FIX 6.7 — Chaque section a son propre statut, plus de status global partagé
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error'
 
+// Clé site Turnstile (publique)
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
+
 export default function UploadPage() {
   const router = useRouter()
   const t = useTranslations('upload')
@@ -70,9 +76,6 @@ export default function UploadPage() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   useEffect(() => {
-    // [SETTINGS-01] L'endpoint /api/admin/upload-settings est désormais admin-only.
-    // L'endpoint public read-only /api/upload-settings expose uniquement les 2
-    // toggles nécessaires côté client.
     fetch('/api/upload-settings')
       .then((r) => r.json())
       .then((data) => {
@@ -82,48 +85,87 @@ export default function UploadPage() {
       .catch(() => setSettingsLoaded(true))
   }, [])
 
-  // [UP-02] Cloudflare Turnstile — chargement conditionnel
+  // ── Cloudflare Turnstile ──
+  // ✅ FIX 6.8 — turnstileReady indique si le token est disponible.
+  // Si TURNSTILE_SITE_KEY est vide → on considère ready=true (dev local sans captcha).
+  // Sinon on attend que le callback CF nous donne le token.
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileReady, setTurnstileReady] = useState(!TURNSTILE_SITE_KEY) // true si pas de clé
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null)
   const turnstileWidgetIdRef = useRef<string | null>(null)
+
   useEffect(() => {
-    const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
-    if (!SITE_KEY || typeof window === 'undefined') return
+    if (!TURNSTILE_SITE_KEY || typeof window === 'undefined') return
+
     const SCRIPT_ID = 'cf-turnstile-script'
     if (!document.getElementById(SCRIPT_ID)) {
       const s = document.createElement('script')
       s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-      s.async = true; s.defer = true; s.id = SCRIPT_ID
+      s.async = true
+      s.defer = true
+      s.id = SCRIPT_ID
       document.head.appendChild(s)
     }
+
     const tryRender = () => {
       const w = window as any
       if (!w.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) return
       try {
         const id = w.turnstile.render(turnstileContainerRef.current, {
-          sitekey: SITE_KEY,
+          sitekey: TURNSTILE_SITE_KEY,
           theme: 'dark',
           size: 'flexible',
-          callback: (token: string) => setTurnstileToken(token),
-          'error-callback': () => setTurnstileToken(null),
-          'expired-callback': () => setTurnstileToken(null),
+          callback: (token: string) => {
+            setTurnstileToken(token)
+            setTurnstileReady(true)   // ✅ FIX 6.8 — Token reçu, boutons débloqués
+          },
+          'error-callback': () => {
+            // ✅ FIX 6.8 — Erreur CF → on marque ready=true quand même (failsafe)
+            // Le serveur a son propre failsafe, on ne bloque pas l'utilisateur
+            console.warn('[Turnstile] error-callback — failsafe, ready=true')
+            setTurnstileToken(null)
+            setTurnstileReady(true)
+          },
+          'expired-callback': () => {
+            // Token expiré → on reset mais on garde ready=true
+            // Le serveur accepte token absent (failsafe côté lib/turnstile.ts)
+            setTurnstileToken(null)
+            setTurnstileReady(true)
+          },
         })
         turnstileWidgetIdRef.current = id
       } catch (err) {
-        console.error('[Turnstile] render error:', err)
+        // Erreur de rendu → failsafe, on débloque quand même
+        console.error('[Turnstile] render error (failsafe):', err)
+        setTurnstileReady(true)
       }
     }
+
     const interval = setInterval(() => {
-      if ((window as any).turnstile) { clearInterval(interval); tryRender() }
+      if ((window as any).turnstile) {
+        clearInterval(interval)
+        tryRender()
+      }
     }, 200)
+
+    // Fallback de sécurité : si après 10s le widget n'a pas chargé, on débloque
+    const fallbackTimeout = setTimeout(() => {
+      if (!turnstileReady) {
+        console.warn('[Turnstile] widget non chargé après 10s — failsafe, ready=true')
+        setTurnstileReady(true)
+      }
+    }, 10000)
+
     return () => {
       clearInterval(interval)
+      clearTimeout(fallbackTimeout)
       const w = window as any
       if (w.turnstile && turnstileWidgetIdRef.current) {
         try { w.turnstile.remove(turnstileWidgetIdRef.current) } catch {}
         turnstileWidgetIdRef.current = null
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── État images ──
@@ -136,7 +178,6 @@ export default function UploadPage() {
   const [uploadSpeed, setUploadSpeed] = useState<string | null>(null)
 
   // ✅ FIX 6.7 — Statuts séparés pour photos et vidéo
-  // Évite le bug où un status partagé affichait "upload vidéo bloqué" dans la dropzone photo
   const [photoStatus, setPhotoStatus] = useState<UploadStatus>('idle')
   const [photoProgress, setPhotoProgress] = useState(0)
   const [videoStatus, setVideoStatus] = useState<UploadStatus>('idle')
@@ -176,7 +217,7 @@ export default function UploadPage() {
     useDropzone({
       onDrop: onDropPhoto,
       accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.gif'] },
-      maxSize: 20 * 1024 * 1024, // 20 MB
+      maxSize: 20 * 1024 * 1024,
       disabled: !uploadSettings.upload_photos_enabled,
     })
 
@@ -184,20 +225,18 @@ export default function UploadPage() {
   const onDropVideo = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (!file) return
-    // Remplacer la vidéo précédente si déjà choisie
     if (videoFile) URL.revokeObjectURL(videoFile.preview)
     setVideoFile({
       file,
       preview: URL.createObjectURL(file),
       type: 'video',
     })
-    // Réinitialiser le statut vidéo si on change de fichier
     setVideoStatus('idle')
     setVideoProgress(0)
     setUploadSpeed(null)
   }, [videoFile])
 
-  // ✅ FIX 6.6 — Dropzone vidéo : ajout MKV + AVI (cohérence avec le serveur)
+  // ✅ FIX 6.6 — Dropzone vidéo : MKV + AVI inclus
   const { getRootProps: getVideoRootProps, getInputProps: getVideoInputProps, isDragActive: isVideoDragActive } =
     useDropzone({
       onDrop: onDropVideo,
@@ -205,12 +244,12 @@ export default function UploadPage() {
         'video/mp4': ['.mp4'],
         'video/quicktime': ['.mov'],
         'video/webm': ['.webm'],
-        'video/x-matroska': ['.mkv'],  // ✅ AJOUTÉ — type MIME officiel MKV
-        'video/avi': ['.avi'],          // ✅ AJOUTÉ — AVI
-        'video/x-msvideo': ['.avi'],    // ✅ AJOUTÉ — AVI type alternatif navigateur
+        'video/x-matroska': ['.mkv'],
+        'video/avi': ['.avi'],
+        'video/x-msvideo': ['.avi'],
       },
       maxFiles: 1,
-      maxSize: 2 * 1024 * 1024 * 1024, // 2 GB
+      maxSize: 2 * 1024 * 1024 * 1024,
       disabled: !uploadSettings.upload_videos_enabled,
     })
 
@@ -263,17 +302,21 @@ export default function UploadPage() {
       formData.append('categorie', categorie)
       formData.append('licence', licence)
       formData.append('tags', tags)
-      // [UP-02] Inclure le token Turnstile (silencieux si non configuré)
+      // ✅ FIX 6.8 — Token envoyé s'il est présent, jamais de plantage s'il est null
+      // Le serveur a un failsafe total (lib/turnstile.ts)
       if (turnstileToken) formData.append('turnstileToken', turnstileToken)
 
       try {
         setPhotoStatus('processing')
         setPhotoProgress(60 + Math.round((i / photoFiles.length) * 35))
 
+        const headers: Record<string, string> = {}
+        if (turnstileToken) headers['X-Turnstile-Token'] = turnstileToken
+
         const res = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
-          headers: turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
+          headers,
         })
 
         if (!res.ok) {
@@ -308,17 +351,18 @@ export default function UploadPage() {
 
     try {
       // Étape 1 — Obtenir l'URL pré-signée Backblaze B2
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (turnstileToken) headers['X-Turnstile-Token'] = turnstileToken
+
       const urlRes = await fetch('/api/videos/upload-url', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}),
-        },
+        headers,
         body: JSON.stringify({
           filename: videoFile.file.name,
           contentType: videoFile.file.type,
           fileSize: videoFile.file.size,
-          turnstileToken,
+          // ✅ FIX 6.8 — Token envoyé s'il est présent, jamais de plantage s'il est null
+          turnstileToken: turnstileToken ?? undefined,
         }),
       })
 
@@ -332,19 +376,15 @@ export default function UploadPage() {
       const { signedUrl, publicUrl, b2Key } = await urlRes.json()
 
       // Étape 2 — Upload direct vers Backblaze B2 avec suivi de progression
-      // Le serveur Vercel ne touche jamais le fichier vidéo
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         const startTime = Date.now()
 
-        // ✅ FIX 6.3 — Suivi vitesse de transfert
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 90)
             setVideoProgress(pct)
-
-            // Calcul de la vitesse en MB/s
-            const elapsed = (Date.now() - startTime) / 1000 // secondes
+            const elapsed = (Date.now() - startTime) / 1000
             if (elapsed > 0) {
               const speedMBs = e.loaded / elapsed / (1024 * 1024)
               setUploadSpeed(speedMBs.toFixed(1))
@@ -353,17 +393,14 @@ export default function UploadPage() {
         }
 
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve()
-          } else {
-            reject(new Error(`Upload B2 échoué: ${xhr.status}`))
-          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Upload B2 échoué: ${xhr.status}`))
         }
 
         xhr.onerror = () => reject(new Error(t('error_network')))
 
-        // ✅ FIX 6.3 — Timeout 2 heures (connexions lentes Afrique de l'Ouest)
-        xhr.timeout = 7200000 // 2 heures en ms
+        // ✅ FIX 6.1 — Timeout 2 heures (connexions lentes Afrique de l'Ouest)
+        xhr.timeout = 7200000
         xhr.ontimeout = () => reject(new Error("Timeout : l'upload a pris trop de temps. Vérifiez votre connexion."))
 
         xhr.open('PUT', signedUrl)
@@ -376,12 +413,12 @@ export default function UploadPage() {
       setUploadSpeed(null)
 
       // Étape 3 — Sauvegarder les métadonnées dans Neon
+      const saveHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (turnstileToken) saveHeaders['X-Turnstile-Token'] = turnstileToken
+
       const saveRes = await fetch('/api/videos/save', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}),
-        },
+        headers: saveHeaders,
         body: JSON.stringify({
           b2Url: publicUrl,
           b2Key,
@@ -396,7 +433,7 @@ export default function UploadPage() {
           categorie,
           licence,
           tags,
-          turnstileToken,
+          turnstileToken: turnstileToken ?? undefined,
         }),
       })
 
@@ -444,7 +481,30 @@ export default function UploadPage() {
   const cardTitle = isLight ? 'text-[#1A2D4A]' : 'text-white'
   const sectionDivider = isLight ? 'border-[rgba(26,45,74,0.08)]' : 'border-white/5'
 
-  // Affichage pendant le chargement des settings
+  // ✅ FIX 6.8 — Calcul des disabled des boutons
+  // turnstileReady est toujours true si pas de clé configurée ou après failsafe
+  const isSubmitPhotoDisabled =
+    !turnstileReady ||
+    photoStatus !== 'idle' ||
+    videoStatus === 'uploading' ||
+    videoStatus === 'processing' ||
+    !photoFiles.length ||
+    !categorie ||
+    !contributeurPrenom.trim() ||
+    !contributeurNom.trim() ||
+    !contributeurEmail.trim()
+
+  const isSubmitVideoDisabled =
+    !turnstileReady ||
+    videoStatus !== 'idle' ||
+    photoStatus === 'uploading' ||
+    photoStatus === 'processing' ||
+    !videoFile ||
+    !categorie ||
+    !contributeurPrenom.trim() ||
+    !contributeurNom.trim() ||
+    !contributeurEmail.trim()
+
   if (!settingsLoaded) {
     return (
       <div className="min-h-screen pt-24 flex items-center justify-center">
@@ -572,7 +632,6 @@ export default function UploadPage() {
 
               {uploadSettings.upload_photos_enabled ? (
                 <>
-                  {/* Dropzone photos active */}
                   <div
                     {...getPhotoRootProps()}
                     className={`relative border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all duration-300 ${
@@ -653,7 +712,7 @@ export default function UploadPage() {
                   )}
                 </>
               ) : (
-                /* Photos désactivées — bloc verrouillé */
+                /* Photos désactivées */
                 <div className="relative rounded-3xl overflow-hidden">
                   <div
                     className="absolute inset-0 z-10 rounded-3xl flex flex-col items-center justify-center gap-4 backdrop-blur-sm"
@@ -663,7 +722,6 @@ export default function UploadPage() {
                       <Lock size={28} className={labelMuted} />
                     </div>
                     <div className="text-center px-6">
-                      {/* ✅ FIX bug message — "upload photo bloqué" et non "upload vidéo bloqué" */}
                       <p className={`font-display text-lg mb-1 ${isLight ? 'text-[rgba(26,45,74,0.55)]' : 'text-white/50'}`}>
                         {t('photo_coming_soon_title')}
                       </p>
@@ -717,14 +775,12 @@ export default function UploadPage() {
                       </span>
                     )}
                   </div>
-                  {/* ✅ FIX 6.6 — Label mis à jour pour inclure MKV + AVI */}
                   <p className={`text-xs ${labelMuted}`}>MP4, MOV, WebM, MKV, AVI — max 2 Go</p>
                 </div>
               </div>
 
               {uploadSettings.upload_videos_enabled ? (
                 <>
-                  {/* Dropzone vidéo active */}
                   {!videoFile ? (
                     <div
                       {...getVideoRootProps()}
@@ -751,7 +807,6 @@ export default function UploadPage() {
                       </div>
                     </div>
                   ) : (
-                    /* Vidéo sélectionnée — aperçu */
                     <div className="card p-4 space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-faso-green/10 flex items-center justify-center flex-shrink-0">
@@ -773,7 +828,6 @@ export default function UploadPage() {
                         </button>
                       </div>
 
-                      {/* ✅ FIX 6.3 — Barre de progression + vitesse uniquement dans la zone vidéo */}
                       {videoProgress > 0 && videoProgress < 100 && (
                         <div className="space-y-1.5">
                           <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -786,7 +840,6 @@ export default function UploadPage() {
                             <span className={`text-xs ${labelMuted}`}>
                               {videoStatus === 'processing' ? t('processing') : `${t('uploading')} ${videoProgress}%`}
                             </span>
-                            {/* ✅ FIX 6.3 — Affichage vitesse de transfert */}
                             {uploadSpeed && videoStatus === 'uploading' && (
                               <span className={`text-xs ${labelMuted}`}>{uploadSpeed} MB/s</span>
                             )}
@@ -794,7 +847,6 @@ export default function UploadPage() {
                         </div>
                       )}
 
-                      {/* ✅ FIX 6.3 — Statut vidéo affiché uniquement dans la zone vidéo */}
                       {videoStatus === 'error' && (
                         <div className="flex items-center gap-2 text-xs text-faso-red">
                           <AlertCircle size={13} />
@@ -816,7 +868,7 @@ export default function UploadPage() {
                   </div>
                 </>
               ) : (
-                /* Vidéos désactivées — bloc verrouillé */
+                /* Vidéos désactivées */
                 <div className="relative rounded-3xl overflow-hidden">
                   <div
                     className="absolute inset-0 z-10 rounded-3xl flex flex-col items-center justify-center gap-4 backdrop-blur-sm"
@@ -826,7 +878,6 @@ export default function UploadPage() {
                       <Lock size={28} className={labelMuted} />
                     </div>
                     <div className="text-center px-6">
-                      {/* ✅ FIX bug message — clé i18n correcte pour la vidéo */}
                       <p className={`font-display text-lg mb-1 ${isLight ? 'text-[rgba(26,45,74,0.55)]' : 'text-white/50'}`}>
                         {t('video_coming_soon_title')}
                       </p>
@@ -975,41 +1026,56 @@ export default function UploadPage() {
             </div>
 
             {/* ════════════════════════════════════════════════
-                BOUTONS DE SOUMISSION
-                ✅ FIX 6.7 — Boutons avec statuts séparés et désactivation croisée
-                Le bouton photo est disabled si la vidéo est en cours (et vice versa)
-                Évite les double-soumissions et les états partagés corrompus
+                CLOUDFLARE TURNSTILE
+                ✅ FIX 6.8 — Widget visible uniquement si clé configurée.
+                Indicateur "Vérification en cours..." pendant le chargement du token.
+                Une fois le token reçu (ou failsafe déclenché), les boutons se débloquent.
             ════════════════════════════════════════════════ */}
-
-            {/* [UP-02] Cloudflare Turnstile — ne s'affiche que si configuré */}
-            {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
-              <div className="flex justify-center my-4">
-                <div ref={turnstileContainerRef} className="cf-turnstile" />
+            {TURNSTILE_SITE_KEY && (
+              <div className="space-y-2">
+                <div className="flex justify-center">
+                  <div ref={turnstileContainerRef} className="cf-turnstile" />
+                </div>
+                {/* ✅ FIX 6.8 — Indicateur pendant le chargement du token */}
+                {!turnstileReady && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-faso-gold/70">
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Vérification de sécurité en cours...</span>
+                  </div>
+                )}
+                {turnstileReady && turnstileToken && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-faso-green/70">
+                    <ShieldCheck size={12} />
+                    <span>Vérification réussie</span>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* ════════════════════════════════════════════════
+                BOUTONS DE SOUMISSION
+                ✅ FIX 6.7 — Statuts séparés + désactivation croisée
+                ✅ FIX 6.8 — Disabled tant que turnstileReady = false
+                             (failsafe: toujours true après 10s ou erreur CF)
+            ════════════════════════════════════════════════ */}
 
             {/* Bouton photos */}
             {uploadSettings.upload_photos_enabled && photoFiles.length > 0 && (
               <button
                 type="button"
                 onClick={handleSubmitPhotos}
-                disabled={
-                  photoStatus !== 'idle' ||
-                  videoStatus === 'uploading' ||
-                  videoStatus === 'processing' ||
-                  !photoFiles.length ||
-                  !categorie ||
-                  !contributeurPrenom.trim() ||
-                  !contributeurNom.trim() ||
-                  !contributeurEmail.trim()
-                }
+                disabled={isSubmitPhotoDisabled}
                 className="w-full btn-primary justify-center py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {photoStatus === 'idle'       && <><Upload      size={20} /> {t('submit')} ({photoFiles.length} photo{photoFiles.length > 1 ? 's' : ''})</>}
-                {photoStatus === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> {t('uploading')} ({photoProgress}%)</>}
-                {photoStatus === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
-                {photoStatus === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
-                {photoStatus === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
+                {/* ✅ FIX 6.8 — État "attente token" affiché dans le bouton */}
+                {!turnstileReady
+                  ? <><Loader2 size={20} className="animate-spin" /> Vérification de sécurité...</>
+                  : photoStatus === 'idle'       ? <><Upload      size={20} /> {t('submit')} ({photoFiles.length} photo{photoFiles.length > 1 ? 's' : ''})</>
+                  : photoStatus === 'uploading'  ? <><Loader2     size={20} className="animate-spin" /> {t('uploading')} ({photoProgress}%)</>
+                  : photoStatus === 'processing' ? <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>
+                  : photoStatus === 'success'    ? <><CheckCircle size={20} /> {t('success')}</>
+                  :                               <><AlertCircle size={20} /> {t('error_retry')}</>
+                }
               </button>
             )}
 
@@ -1018,24 +1084,19 @@ export default function UploadPage() {
               <button
                 type="button"
                 onClick={handleSubmitVideo}
-                disabled={
-                  videoStatus !== 'idle' ||
-                  photoStatus === 'uploading' ||
-                  photoStatus === 'processing' ||
-                  !videoFile ||
-                  !categorie ||
-                  !contributeurPrenom.trim() ||
-                  !contributeurNom.trim() ||
-                  !contributeurEmail.trim()
-                }
+                disabled={isSubmitVideoDisabled}
                 className="w-full btn-primary justify-center py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, var(--faso-green), var(--faso-gold))' }}
               >
-                {videoStatus === 'idle'       && <><Upload      size={20} /> {t('submit')} (1 vidéo)</>}
-                {videoStatus === 'uploading'  && <><Loader2     size={20} className="animate-spin" /> Upload vidéo... ({videoProgress}%)</>}
-                {videoStatus === 'processing' && <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>}
-                {videoStatus === 'success'    && <><CheckCircle size={20} /> {t('success')}</>}
-                {videoStatus === 'error'      && <><AlertCircle size={20} /> {t('error_retry')}</>}
+                {/* ✅ FIX 6.8 — État "attente token" affiché dans le bouton */}
+                {!turnstileReady
+                  ? <><Loader2 size={20} className="animate-spin" /> Vérification de sécurité...</>
+                  : videoStatus === 'idle'       ? <><Upload      size={20} /> {t('submit')} (1 vidéo)</>
+                  : videoStatus === 'uploading'  ? <><Loader2     size={20} className="animate-spin" /> Upload vidéo... ({videoProgress}%)</>
+                  : videoStatus === 'processing' ? <><Loader2     size={20} className="animate-spin" /> {t('processing')}</>
+                  : videoStatus === 'success'    ? <><CheckCircle size={20} /> {t('success')}</>
+                  :                               <><AlertCircle size={20} /> {t('error_retry')}</>
+                }
               </button>
             )}
 
