@@ -13,3 +13,9 @@ tsconfig.tsbuildinfo
 # IDE
 .vscode/
 .idea/
+
+# ══════════════════════════════════════════════
+# SENTRY
+# ══════════════════════════════════════════════
+.env.sentry-build-plugin
+.sentryclirc

@@ -69,6 +69,8 @@ function buildCsp() {
       'https://res.cloudinary.com',                 // Cloudinary delivery
       'https://api.cloudinary.com',                 // Cloudinary upload (côté serveur, mais pour le check)
       'https://challenges.cloudflare.com',          // Turnstile siteverify côté client
+      'https://*.sentry.io',                        // Sentry reporting
+      'https://*.ingest.de.sentry.io',              // Sentry EU ingest
     ],
     'frame-src': ["'self'", 'https://challenges.cloudflare.com'],
     'frame-ancestors': ["'self'"],
@@ -197,4 +199,20 @@ const nextConfig = {
 const createNextIntlPlugin = require('next-intl/plugin')
 const withNextIntl = createNextIntlPlugin('./i18n.ts')
 
-module.exports = withNextIntl(nextConfig)
+// [SENTRY] withSentryConfig enveloppe withNextIntl pour monitoring
+const { withSentryConfig } = require("@sentry/nextjs")
+
+module.exports = withSentryConfig(withNextIntl(nextConfig), {
+  // Organisation et projet Sentry
+  org: "poodasamuelpro",
+  project: "burkinavista-ng",
+
+  // Pas d'upload de source maps (auth-token géré via env Vercel)
+  silent: true,
+
+  // Tunnel Sentry via le serveur Next.js (contourne les ad-blockers)
+  tunnelRoute: "/monitoring",
+
+  // Masque les source maps côté client
+  hideSourceMaps: true,
+})
