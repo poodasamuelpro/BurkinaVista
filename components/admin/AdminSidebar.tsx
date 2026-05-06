@@ -10,6 +10,11 @@
  * FIX (2026-05-06) :
  *  - Ajout lien /admin/reports (Signalements) — était créé mais absent de la nav
  *  - Accès admin uniquement (déjà protégé par middleware.ts)
+ *
+ * FIX (2026-05-06) — Scroll mobile :
+ *  - Le aside mobile avait overflow caché → impossible de scroller la nav
+ *  - Ajout overflow-y-auto + flex flex-col sur le aside mobile
+ *  - Le contenu interne prend toute la hauteur avec flex-1
  */
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -41,13 +46,11 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
-  // Compteur de signalements en attente
   const [pendingReports, setPendingReports] = useState(0)
 
   const isOnPhotos = pathname.startsWith('/admin/photos')
   const isOnReports = pathname.startsWith('/admin/reports')
 
-  // Charge le nombre de signalements pending au montage
   useEffect(() => {
     fetch('/api/admin/reports?statut=pending')
       .then((r) => r.json())
@@ -56,6 +59,16 @@ export default function AdminSidebar() {
       })
       .catch(() => {})
   }, [pathname])
+
+  // Bloquer le scroll du body quand le menu mobile est ouvert
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   const handleLogout = async () => {
     try {
@@ -71,14 +84,14 @@ export default function AdminSidebar() {
   const SidebarContent = () => (
     <>
       {/* Logo admin */}
-      <div className="px-4 mb-8">
+      <div className="px-4 mb-8 flex-shrink-0">
         <FasoLogo size={28} showName={true} />
         <p className="text-xs text-white/20 uppercase tracking-wider mt-2 pl-1">Administration</p>
         <div className="faso-divider mt-3" />
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1">
+      {/* Navigation — flex-1 pour prendre l'espace dispo */}
+      <nav className="flex-1 space-y-1 min-h-0">
         {/* Dashboard */}
         <Link
           href="/admin"
@@ -100,7 +113,6 @@ export default function AdminSidebar() {
             Médias
           </Link>
 
-          {/* Sous-liens toujours visibles */}
           <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/5 pl-3">
             {mediaSubLinks.map(({ href, label, icon: Icon, color }) => (
               <Link
@@ -150,7 +162,7 @@ export default function AdminSidebar() {
       </nav>
 
       {/* Footer sidebar */}
-      <div className="space-y-1 pt-4 border-t border-white/5">
+      <div className="space-y-1 pt-4 border-t border-white/5 flex-shrink-0">
         <Link
           href="/"
           onClick={() => setMobileOpen(false)}
@@ -171,36 +183,44 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Sidebar desktop (fixe) */}
+      {/* ── Sidebar desktop (fixe + scrollable) ── */}
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-faso-dusk border-r border-white/5 p-4 flex-col z-40 pt-6 overflow-y-auto">
         <SidebarContent />
       </aside>
 
-      {/* Bouton burger mobile */}
+      {/* ── Bouton burger mobile ── */}
       <button
         onClick={() => setMobileOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-50 w-10 h-10 rounded-xl bg-faso-dusk border border-white/10 flex items-center justify-center text-white/70 hover:text-white"
+        aria-label="Ouvrir le menu"
       >
         <Menu size={20} />
       </button>
 
-      {/* Overlay mobile */}
+      {/* ── Overlay mobile ── */}
       {mobileOpen && (
         <div
           className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         >
+          {/*
+            FIX SCROLL MOBILE :
+            - flex flex-col        → permet au contenu interne d'utiliser flex-1
+            - overflow-y-auto      → active le scroll vertical sur le aside lui-même
+            - h-full               → prend toute la hauteur de l'écran
+          */}
           <aside
-            className="absolute left-0 top-0 bottom-0 w-72 bg-faso-dusk border-r border-white/5 p-4 flex flex-col"
+            className="absolute left-0 top-0 bottom-0 w-72 bg-faso-dusk border-r border-white/5 p-4 flex flex-col overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setMobileOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-white"
+              className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-white z-10"
+              aria-label="Fermer le menu"
             >
               <X size={16} />
             </button>
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col flex-1">
               <SidebarContent />
             </div>
           </aside>
