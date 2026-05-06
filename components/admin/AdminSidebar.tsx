@@ -210,8 +210,10 @@ export default function AdminSidebar() {
             - h-full               → prend toute la hauteur de l'écran
           */}
           <aside
-            className="absolute left-0 top-0 bottom-0 w-72 bg-faso-dusk border-r border-white/5 p-4 flex flex-col overflow-y-auto"
+            className="absolute left-0 top-0 bottom-0 w-72 bg-faso-dusk border-r border-white/5 p-4 flex flex-col overflow-y-auto overscroll-contain"
+            style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
             onClick={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setMobileOpen(false)}
