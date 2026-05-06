@@ -19,6 +19,11 @@
  *   - Email à l'admin à chaque nouveau signalement (toujours)
  *   - Email de confirmation au signalant s'il a fourni son email
  *   - Pour copyright/illegal : email obligatoire → confirmation toujours envoyée
+ *
+ * FIX (2026-05-06) — Alignement SQL :
+ *   - Colonnes SQL : status (pas statut), admin_notes (pas admin_note)
+ *   - Statuts SQL : pending, reviewed, dismissed, actioned (pas review/resolved)
+ *   - reporter_ip stocké en TEXT (pas INET) dans media_reports
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
@@ -338,13 +343,15 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req)
     const safeMessage = message ? String(message).substring(0, 1000) : null
     const safeEmail = email ? String(email).toLowerCase().trim().substring(0, 200) : null
+    // reporter_ip est TEXT dans media_reports (pas INET)
+    const safeIp = ip === 'unknown' ? null : ip
 
-    // Insertion en base
+    // Insertion en base — colonnes SQL : status, admin_notes, reporter_ip (TEXT)
     const [inserted] = await query<{ id: string }>(
       `INSERT INTO media_reports (media_id, reason, message, reporter_email, reporter_ip)
-       VALUES ($1, $2, $3, $4, $5::inet)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [mediaId, safeReason, safeMessage, safeEmail, ip === 'unknown' ? null : ip]
+      [mediaId, safeReason, safeMessage, safeEmail, safeIp]
     )
 
     const reportId = inserted?.id || 'inconnu'
