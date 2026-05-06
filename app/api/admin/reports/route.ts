@@ -6,11 +6,17 @@
  *  PATCH : met à jour le statut d'un signalement
  *
  * FIX (2026-05-06) — Emails après traitement :
- *  - Si statut → 'resolved' ou 'actioned' ET signalant a un email
- *    → email de notification envoyé au signalant
+ *  - Si statut → 'actioned' ET signalant a un email → email de notification
  *  - Si statut → 'dismissed' → pas d'email (rejet silencieux)
- *  - Email obligatoire pour copyright/illegal → confirmation de résolution
- *    avec message légal approprié
+ *
+ * FIX (2026-05-06) — Alignement SQL (BREAKING BUG CORRIGÉ) :
+ *  - Colonne SQL : status (PAS statut) → aliasé AS statut pour le front
+ *  - Colonne SQL : admin_notes (PAS admin_note) → aliasé AS admin_note pour le front
+ *  - Colonne SQL : reviewed_at (pas updated_at) → aliasé AS updated_at
+ *  - Statuts SQL valides : pending, reviewed, dismissed, actioned
+ *    (supprimés : 'review' et 'resolved' qui n'existent PAS en DB)
+ *  - reporter_ip : TEXT dans media_reports (pas INET) → pas de ::text cast
+ *  - SET mis à jour : status = $1, admin_notes = $2, reviewed_at = NOW()
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
@@ -27,11 +33,17 @@ const FROM_DISPLAY = `BurkinaVista <${FROM_EMAIL}>`
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.CONTACT_EMAIL || ''
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://burkina-vista.vercel.app'
 
-const ALLOWED_STATUSES = ['pending', 'review', 'resolved', 'dismissed', 'actioned'] as const
+/**
+ * STATUTS VALIDES — alignés sur la contrainte CHECK de la migration SQL :
+ * CHECK (status IN ('pending', 'reviewed', 'dismissed', 'actioned'))
+ *
+ * ⚠️ 'review' et 'resolved' sont SUPPRIMÉS — ils n'existent pas dans la DB.
+ */
+const ALLOWED_STATUSES = ['pending', 'reviewed', 'dismissed', 'actioned'] as const
 type ReportStatus = typeof ALLOWED_STATUSES[number]
 
 /** Statuts qui déclenchent un email au signalant */
-const NOTIFY_STATUSES: ReportStatus[] = ['resolved', 'actioned']
+const NOTIFY_STATUSES: ReportStatus[] = ['reviewed', 'actioned']
 
 const REASON_LABELS: Record<string, string> = {
   inappropriate: 'Contenu inapproprié',
@@ -42,6 +54,11 @@ const REASON_LABELS: Record<string, string> = {
   other:         'Autre motif',
 }
 
+/**
+ * Interface alignée sur les vraies colonnes SQL + alias pour compatibilité front.
+ * La query SQL utilise des alias : status AS statut, admin_notes AS admin_note,
+ * reviewed_at AS updated_at → le front reçoit les mêmes noms qu'avant.
+ */
 interface ReportWithMedia {
   id: string
   media_id: string
@@ -49,10 +66,10 @@ interface ReportWithMedia {
   message: string | null
   reporter_email: string | null
   reporter_ip: string | null
-  statut: string
-  admin_note: string | null
+  statut: string        // alias de status
+  admin_note: string | null  // alias de admin_notes
   created_at: string
-  updated_at: string
+  updated_at: string | null  // alias de reviewed_at
   media_titre: string | null
   media_slug: string | null
   media_type: string | null
@@ -80,20 +97,19 @@ async function sendResolutionToReporter(params: {
   const isGrave = ['copyright', 'illegal'].includes(reason)
 
   const statusMessages: Record<ReportStatus, { title: string; color: string; body: string }> = {
-    resolved: {
-      title: 'Signalement résolu ✅',
-      color: '#009A00',
-      body: 'Votre signalement a été examiné et traité par notre équipe. Le contenu a été modifié ou retiré conformément à nos règles.',
+    reviewed: {
+      title: 'Signalement examiné ✅',
+      color: '#EFC031',
+      body: 'Votre signalement a été examiné par notre équipe. Merci pour votre contribution.',
     },
     actioned: {
       title: 'Action prise suite à votre signalement ✅',
-      color: '#EFC031',
+      color: '#009A00',
       body: isGrave
         ? 'Votre signalement a été traité en priorité. Des mesures appropriées ont été prises conformément à la législation en vigueur.'
         : 'Votre signalement a été pris en compte et des mesures ont été appliquées.',
     },
     pending: { title: '', color: '', body: '' },
-    review: { title: '', color: '', body: '' },
     dismissed: { title: '', color: '', body: '' },
   }
 
@@ -104,7 +120,7 @@ async function sendResolutionToReporter(params: {
     await resend.emails.send({
       from: FROM_DISPLAY,
       to: reporterEmail,
-      subject: `${statut === 'resolved' ? 'Résolution' : 'Traitement'} de votre signalement — BurkinaVista`,
+      subject: `${statut === 'reviewed' ? 'Examen' : 'Traitement'} de votre signalement — BurkinaVista`,
       html: `
 <!DOCTYPE html>
 <html lang="fr">
@@ -184,10 +200,20 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const statutFilter = url.searchParams.get('statut')
 
+    /**
+     * CORRECTION CRITIQUE :
+     * - r.status    → aliasé AS statut       (colonne SQL = status)
+     * - r.admin_notes → aliasé AS admin_note (colonne SQL = admin_notes)
+     * - r.reviewed_at → aliasé AS updated_at (colonne SQL = reviewed_at, pas updated_at)
+     * - r.reporter_ip : TEXT dans media_reports → pas de cast ::text nécessaire
+     */
     const baseQuery = `
       SELECT r.id, r.media_id, r.reason, r.message, r.reporter_email,
-             r.reporter_ip::text AS reporter_ip,
-             r.statut, r.admin_note, r.created_at, r.updated_at,
+             r.reporter_ip,
+             r.status       AS statut,
+             r.admin_notes  AS admin_note,
+             r.created_at,
+             r.reviewed_at  AS updated_at,
              m.titre AS media_titre, m.slug AS media_slug, m.type AS media_type
       FROM media_reports r
       LEFT JOIN medias m ON m.id = r.media_id
@@ -195,7 +221,7 @@ export async function GET(req: NextRequest) {
 
     const reports = statutFilter && (ALLOWED_STATUSES as readonly string[]).includes(statutFilter)
       ? await queryMany<ReportWithMedia>(
-          baseQuery + ' WHERE r.statut = $1 ORDER BY r.created_at DESC',
+          baseQuery + ' WHERE r.status = $1 ORDER BY r.created_at DESC',
           [statutFilter]
         )
       : await queryMany<ReportWithMedia>(
@@ -226,13 +252,14 @@ export async function PATCH(req: NextRequest) {
 
     if (!statut || !(ALLOWED_STATUSES as readonly string[]).includes(statut)) {
       return NextResponse.json(
-        { error: `Statut invalide. Valeurs : ${ALLOWED_STATUSES.join(', ')}` },
+        { error: `Statut invalide. Valeurs acceptées : ${ALLOWED_STATUSES.join(', ')}` },
         { status: 400 }
       )
     }
     const safeStatut = statut as ReportStatus
 
     // Récupérer le signalement + média pour l'email
+    // CORRECTION : r.status (pas r.statut), r.admin_notes (pas r.admin_note)
     const existing = await queryOne<{
       id: string
       reason: string
@@ -241,7 +268,8 @@ export async function PATCH(req: NextRequest) {
       media_titre: string | null
       media_slug: string | null
     }>(
-      `SELECT r.id, r.reason, r.reporter_email, r.statut,
+      `SELECT r.id, r.reason, r.reporter_email,
+              r.status AS statut,
               m.titre AS media_titre, m.slug AS media_slug
        FROM media_reports r
        LEFT JOIN medias m ON m.id = r.media_id
@@ -255,16 +283,21 @@ export async function PATCH(req: NextRequest) {
 
     const safeAdminNote = admin_note ? String(admin_note).substring(0, 1000) : null
 
+    /**
+     * CORRECTION CRITIQUE :
+     * - SET status = $1        (PAS statut)
+     * - SET admin_notes = $2   (PAS admin_note)
+     * - SET reviewed_at = NOW() (colonne existante dans media_reports)
+     *   NB : la table media_reports n'a PAS de colonne updated_at
+     */
     await query(
       `UPDATE media_reports
-       SET statut = $1, admin_note = $2, updated_at = NOW()
+       SET status = $1, admin_notes = $2, reviewed_at = NOW()
        WHERE id = $3`,
       [safeStatut, safeAdminNote, id]
     )
 
-    // Email au signalant si :
-    // - statut est 'resolved' ou 'actioned'
-    // - ET le signalant a laissé son email
+    // Email au signalant si statut est notifiable ET le signalant a un email
     if (NOTIFY_STATUSES.includes(safeStatut) && existing.reporter_email) {
       sendResolutionToReporter({
         reporterEmail: existing.reporter_email,
