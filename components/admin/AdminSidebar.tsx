@@ -6,13 +6,18 @@
  *
  * AJOUT (2026-04-22) :
  *  - Sous-menu Médias avec accès rapide : Tous / Publiés / En attente / Refusés
+ *
+ * FIX (2026-05-06) :
+ *  - Ajout lien /admin/reports (Signalements) — était créé mais absent de la nav
+ *  - Accès admin uniquement (déjà protégé par middleware.ts)
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Image, Users, FolderOpen, LogOut, Mail,
-  Newspaper, Menu, X, CheckCircle, Clock, XCircle, LayoutGrid
+  Newspaper, Menu, X, CheckCircle, Clock, XCircle, LayoutGrid,
+  Flag,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import FasoLogo from '@/components/ui/FasoLogo'
@@ -36,9 +41,21 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Compteur de signalements en attente
+  const [pendingReports, setPendingReports] = useState(0)
 
-  // Sous-menu médias toujours ouvert si on est sur /admin/photos
   const isOnPhotos = pathname.startsWith('/admin/photos')
+  const isOnReports = pathname.startsWith('/admin/reports')
+
+  // Charge le nombre de signalements pending au montage
+  useEffect(() => {
+    fetch('/api/admin/reports?statut=pending')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.reports) setPendingReports(data.reports.length)
+      })
+      .catch(() => {})
+  }, [pathname])
 
   const handleLogout = async () => {
     try {
@@ -85,24 +102,35 @@ export default function AdminSidebar() {
 
           {/* Sous-liens toujours visibles */}
           <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/5 pl-3">
-            {mediaSubLinks.map(({ href, label, icon: Icon, color }) => {
-              const isActive = pathname + (typeof window !== 'undefined' ? window.location.search : '') === href
-                || (href === '/admin/photos' && pathname === '/admin/photos' && !isOnPhotos)
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors
-                    ${color || 'text-white/50'} hover:text-white hover:bg-white/5`}
-                >
-                  <Icon size={13} />
-                  {label}
-                </Link>
-              )
-            })}
+            {mediaSubLinks.map(({ href, label, icon: Icon, color }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors
+                  ${color || 'text-white/50'} hover:text-white hover:bg-white/5`}
+              >
+                <Icon size={13} />
+                {label}
+              </Link>
+            ))}
           </div>
         </div>
+
+        {/* Signalements — avec badge si pending */}
+        <Link
+          href="/admin/reports"
+          onClick={() => setMobileOpen(false)}
+          className={`admin-sidebar-link ${isOnReports ? 'active' : ''}`}
+        >
+          <Flag size={18} />
+          <span className="flex-1">Signalements</span>
+          {pendingReports > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-faso-red text-white text-[10px] font-bold">
+              {pendingReports > 99 ? '99+' : pendingReports}
+            </span>
+          )}
+        </Link>
 
         {/* Autres liens */}
         {links.slice(1).map(({ href, label, icon: Icon, exact }) => {
